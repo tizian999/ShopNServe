@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: shopnserve-backend
+
+  neo4j:
+    uri: bolt://localhost:7687
+    authentication:
+      username: neo4j
+      password: test12345
+
+server:
+  port: 8080
+
+logging:
+  level:
+    org.springframework.data.neo4j: INFO
+    org.neo4j.driver: INFO
