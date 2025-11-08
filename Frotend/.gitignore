@@ -1,0 +1,11 @@
+# Node & build stuff
+node_modules/
+dist/
+*.log
+*.tmp
+.DS_Store
+
+# Vite & local cache
+.vite/
+.idea/
+.env.local
