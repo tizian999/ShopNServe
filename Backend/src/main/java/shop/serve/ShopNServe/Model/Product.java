@@ -3,23 +3,38 @@ package shop.serve.ShopNServe.model;
 import org.springframework.data.neo4j.core.schema.GeneratedValue;
 import org.springframework.data.neo4j.core.schema.Id;
 import org.springframework.data.neo4j.core.schema.Node;
+import org.springframework.data.neo4j.core.schema.Relationship;
+import org.springframework.data.annotation.Version;
+import java.util.*;
 
 @Node
 public class Product {
-    @Id @GeneratedValue private Long id;
+
+    @Id
+    private String id = UUID.randomUUID().toString();
     private String name;
     private int priceCents;
 
+    @Version
+    private Long version;
+
+    @Relationship(type = "RELATED_TO")
+    private List<Product> relatedProducts = new ArrayList<>();
+
     public Product() {}
+
     public Product(String name, int priceCents) {
         this.name = name;
         this.priceCents = priceCents;
     }
 
-    public Long getId() { return id; }
+    public String getId() { return id; }
     public String getName() { return name; }
     public int getPriceCents() { return priceCents; }
-    public void setId(Long id) { this.id = id; }
-    public void setName(String name) { this.name = name; }
-    public void setPriceCents(int priceCents) { this.priceCents = priceCents; }
+    public Long getVersion() { return version; }
+    public List<Product> getRelatedProducts() { return relatedProducts; }
+
+    public void addRelatedProduct(Product p) {
+        this.relatedProducts.add(p);
+    }
 }
