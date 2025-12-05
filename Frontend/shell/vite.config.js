@@ -6,6 +6,7 @@ import path from 'path'
 export default defineConfig({
   plugins: [react(), vue()],
   server: {
+    port: 5173, // Explicitly setting port
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
@@ -13,18 +14,19 @@ export default defineConfig({
       },
     },
     fs: {
-      // Erlaube Zugriff auf das Frontend Root, damit alias außerhalb des Shell-Root funktioniert
+      // Allow access to parent directories for microfrontend imports
       allow: [
         '..',
-        path.resolve(__dirname, '..'),
-        path.resolve(__dirname, '../microclient-vue/src')
       ]
     }
   },
   resolve: {
     alias: {
-      // Alias um direkt Shop.vue zu importieren
-      '@vue-micro': path.resolve(__dirname, '../microclient-vue/src')
+      // Alias for Vue microfrontend import
+      '@vue-micro': path.resolve(__dirname, '../microclient-vue/src'),
+      // Force a single copy of React
+      'react': path.resolve(__dirname, 'node_modules/react'),
+      'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
     }
   },
   optimizeDeps: {

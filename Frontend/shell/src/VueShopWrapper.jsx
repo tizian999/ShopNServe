@@ -1,28 +1,33 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { createApp } from 'vue'
-import Shop from '../../microclient-vue/src/components/Shop.vue'
+import React, { useRef, useEffect } from 'react';
+import { createApp } from 'vue';
+import Shop from '../../microclient-vue/src/components/Shop.vue';
 
-export default function VueShopWrapper() {
-  const mountRef = useRef(null)
-  const [mounted, setMounted] = useState(false)
+// Import Vuetify and its styles
+import 'vuetify/styles';
+import { createVuetify } from 'vuetify';
+import * as components from 'vuetify/components';
+import * as directives from 'vuetify/directives';
+import '@mdi/font/css/materialdesignicons.css';
+
+const VueShopWrapper = () => {
+  const vueRoot = useRef(null);
+
   useEffect(() => {
-    if (!mountRef.current || mounted) return
-    const app = createApp(Shop)
-    app.mount(mountRef.current)
-    mountRef.current.__vue_app__ = app
-    setMounted(true)
-    return () => {
-      if (mountRef.current && mountRef.current.__vue_app__) {
-        mountRef.current.__vue_app__.unmount()
-        delete mountRef.current.__vue_app__
-      }
-    }
-  }, [mounted])
+    if (vueRoot.current && !vueRoot.current.hasChildNodes()) {
+      // Create a Vuetify instance
+      const vuetify = createVuetify({
+        components,
+        directives,
+      });
 
-  return (
-    <div style={{ position:'relative' }}>
-      {!mounted && <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, opacity:.6}}>Lade Vue Shop…</div>}
-      <div ref={mountRef} />
-    </div>
-  )
-}
+      // Create a Vue app instance, use Vuetify, and then mount the component
+      const app = createApp(Shop);
+      app.use(vuetify);
+      app.mount(vueRoot.current);
+    }
+  }, []);
+
+  return <div ref={vueRoot}></div>;
+};
+
+export default VueShopWrapper;

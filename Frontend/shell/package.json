@@ -10,13 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mdi/font": "^7.4.47",
+    "@mui/material": "^7.3.6",
     "axios": "^1.13.2",
+    "dagre": "^0.8.5",
+    "mui": "^0.0.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-force-graph-2d": "^1.29.0",
     "reactflow": "^11.11.4",
     "vue": "^3.5.24",
-    "dagre": "^0.8.5"
+    "vuetify": "^3.11.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
