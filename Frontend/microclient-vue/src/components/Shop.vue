@@ -5,7 +5,7 @@
         <v-col cols="12" md="10" lg="8">
           <header class="text-center mb-8">
             <h1 class="text-h3 font-weight-bold text-purple-accent-1">
-              Snack & Drink Stop
+              ShopNServe
             </h1>
             <p class="text-medium-emphasis">Your favorite snacks and drinks, delivered fast</p>
           </header>
@@ -156,7 +156,6 @@
     </v-container>
   </v-app>
 </template>
-
 <script lang="ts" setup>
 import { ref, watch } from "vue";
 
@@ -164,6 +163,10 @@ interface Product {
   id: number;
   name: string;
 }
+
+const MICROCLIENT = "Shop-Microclient";
+const LOGIN_COMPONENT = "LoginView.vue";
+const PRODUCTLIST_COMPONENT = "ProductListView.vue";
 
 const user = ref<string | null>(null);
 const form = ref({ username: "", password: "" });
@@ -173,46 +176,83 @@ const products = ref<Product[]>([]);
 const selected = ref<Product | null>(null);
 const quantity = ref(1);
 
+watch(
+    form,
+    () => {
+      msg.value = "";
+    },
+    { deep: true }
+);
 
-watch(form, () => {
-  msg.value = "";
-}, { deep: true });
+function getToken(): string | null {
+  return localStorage.getItem("jwt");
+}
 
-async function postEvent(eventType: string, capability: string, payload: any = {}) {
-  try {
-    await fetch("http://localhost:8080/api/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sender: user.value || "SnackShop",
-        eventType,
-        capability,
-        payload: JSON.stringify(payload)
-      })
-    });
-  } catch (error) {
-    console.error("Failed to post event:", error);
-    msg.value = "Network error. Could not connect to the server.";
+function setToken(token: string) {
+  localStorage.setItem("jwt", token);
+}
+
+function clearToken() {
+  localStorage.removeItem("jwt");
+}
+
+async function postBlackboardEvent(senderComponent: string, capabilities: string[], payload: any = null) {
+  const token = getToken();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const isAuth = capabilities.includes("Authentication");
+  if (!isAuth && token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
+  const body = {
+    sender: {
+      component: senderComponent,
+      application: MICROCLIENT,
+    },
+    capabilities,
+    payload,
+  };
+  const res = await fetch("/api/blackboard/messages", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    clearToken();
+    user.value = null;
+    products.value = [];
+    selected.value = null;
+    msg.value = "Session expired. Please login again.";
+    return null;
+  }
+
+  return res.ok ? res.json().catch(() => null) : null;
 }
 
 async function login() {
   try {
-    const res = await fetch("http://localhost:8080/api/auth/login", {
+    const res = await fetch("/api/blackboard/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form.value)
+      body: JSON.stringify({
+        sender: { component: "LoginView.vue", application: "Shop-Microclient" },
+        capabilities: ["Authentication"],
+        payload: { action: "login", username: form.value.username, password: form.value.password }
+      })
     });
 
-    const json = await res.json();
+    const json = await res.json().catch(() => ({}));
 
-    if (json.success) {
-      user.value = json.username;
+    if (res.ok && json?.ok && json?.data?.token) {
+      user.value = json.data.username;
+      localStorage.setItem("jwt", json.data.token);
       msg.value = "Logged in successfully!";
-      await postEvent("PROVIDES", "AuthCredentials", { username: user.value });
-    } else {
-      msg.value = json.message || "Login failed. Please check your credentials.";
+      return;
     }
+
+    msg.value = json?.data?.error || "Login failed.";
   } catch (e) {
     msg.value = "Login request failed. Is the server running?";
   }
@@ -220,21 +260,24 @@ async function login() {
 
 async function registerUser() {
   try {
-    const res = await fetch("http://localhost:8080/api/auth/register", {
+    await postBlackboardEvent(LOGIN_COMPONENT, ["Authentication"], { register: true, username: form.value.username });
+
+    const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form.value)
+      body: JSON.stringify(form.value),
     });
 
-    const json = await res.json();
+    const json = await res.json().catch(() => ({}));
 
-    if (json.success) {
-      user.value = json.username;
+    if (json?.success && json?.token) {
+      setToken(json.token);
+      user.value = json.username ?? form.value.username;
       msg.value = "Registered successfully! You are now logged in.";
-      await postEvent("PROVIDES", "AuthCredentials", { username: user.value });
-    } else {
-      msg.value = json.message || "Registration failed.";
+      return;
     }
+
+    msg.value = json?.message || "Registration failed.";
   } catch (e) {
     msg.value = "Registration request failed. Is the server running?";
   }
@@ -246,12 +289,11 @@ function logout() {
   products.value = [];
   selected.value = null;
   form.value = { username: "", password: "" };
-  postEvent("REQUIRES", "AuthCredentials");
+  clearToken();
 }
 
 async function loadProducts() {
-  await postEvent("REQUIRES", "ProductList");
-
+  await postBlackboardEvent(PRODUCTLIST_COMPONENT, ["Authorization", "ProductList"], null);
   products.value = [
     { id: 1, name: "Crispy Chips" },
     { id: 2, name: "Sparkling Water" },
@@ -261,26 +303,22 @@ async function loadProducts() {
     { id: 6, name: "Iced Tea" },
   ];
 
-  await postEvent("PROVIDES", "ProductList", products.value);
   msg.value = "";
 }
 
 function selectProduct(p: Product) {
-  if (selected.value?.id === p.id) {
-    selected.value = null;
-  } else {
-    selected.value = p;
-    postEvent("PROVIDES", "ProductSelection", p);
-  }
+  selected.value = selected.value?.id === p.id ? null : p;
   msg.value = "";
 }
 
-function order() {
-  msg.value = `Order for ${quantity.value}x '${selected.value?.name}' sent successfully!`;
-  postEvent("PROVIDES", "OrderCreated", {
+async function order() {
+  if (!selected.value) return;
+  await postBlackboardEvent(PRODUCTLIST_COMPONENT, ["Authorization", "OrderPlaced"], {
     product: selected.value,
-    quantity: quantity.value
+    quantity: quantity.value,
   });
+
+  msg.value = `Order for ${quantity.value}x '${selected.value.name}' sent successfully!`;
   selected.value = null;
   quantity.value = 1;
 }

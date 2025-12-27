@@ -1,40 +1,42 @@
 package shop.serve.ShopNServe.controller;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import shop.serve.ShopNServe.model.MessageEvent;
-import shop.serve.ShopNServe.repository.MessageEventRepository;
-import shop.serve.ShopNServe.repository.MicroClientRepository;
-import shop.serve.ShopNServe.repository.DataNodeRepository;
+import shop.serve.ShopNServe.model.BlackboardResponse;
+import shop.serve.ShopNServe.model.MessageEventRequest;
+import shop.serve.ShopNServe.service.BlackboardQueryService;
+import shop.serve.ShopNServe.service.BlackboardService;
 
 import java.util.Map;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/blackboard")
-@CrossOrigin("*")
 public class BlackboardController {
 
-    private final MessageEventRepository messageRepo;
-    private final MicroClientRepository clientRepo;
-    private final DataNodeRepository dataRepo;
+    private final BlackboardService blackboardService;
+    private final BlackboardQueryService queryService;
 
-    public BlackboardController(
-            MessageEventRepository messageRepo,
-            MicroClientRepository clientRepo,
-            DataNodeRepository dataRepo
+    public BlackboardController(BlackboardService blackboardService, BlackboardQueryService queryService) {
+        this.blackboardService = blackboardService;
+        this.queryService = queryService;
+    }
+
+    @PostMapping("/messages")
+    public ResponseEntity<BlackboardResponse> postMessage(
+            @RequestBody MessageEventRequest event,
+            @RequestHeader(value = "Authorization", required = false) String authHeader
     ) {
-        this.messageRepo = messageRepo;
-        this.clientRepo = clientRepo;
-        this.dataRepo = dataRepo;
+        BlackboardResponse resp = blackboardService.handle(event, authHeader);
+        return resp.ok() ? ResponseEntity.ok(resp) : ResponseEntity.status(401).body(resp);
     }
 
-    @PostMapping("/event")
-    public MessageEvent addEvent(@RequestBody MessageEvent event) {
-        return messageRepo.save(event);
+    @GetMapping("/graph")
+    public ResponseEntity<Map<String, Object>> getGraph() {
+        return ResponseEntity.ok(queryService.getGraph());
     }
 
-    @GetMapping("/events")
-    public List<MessageEvent> getEvents() {
-        return messageRepo.findAll();
+    @GetMapping("/messages")
+    public ResponseEntity<?> getMessages(@RequestParam(defaultValue = "50") int limit) {
+        return ResponseEntity.ok(queryService.getMessages(limit));
     }
 }

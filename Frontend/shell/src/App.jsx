@@ -5,23 +5,21 @@ import ReactMicroclientWrapper from './ReactMicroclientWrapper.jsx';
 
 function App() {
     return (
-        <div className="app-root">
+        <div>
             <header className="app-header">
                 <h1>ShopNServe</h1>
                 <p>Blackboard-basierte Microfrontend-Plattform</p>
             </header>
 
-            <main className="app-main-grid">
-                <div className="panel">
+            <main style={{ display: 'flex', gap: '1rem', padding: '1rem' }}>
+                <div style={{ flex: 1, border: '1px solid #ddd', borderRadius: '8px', padding: '1rem' }}>
                     <h2>🛒 Shop </h2>
                     <VueShopWrapper />
                 </div>
-
-                <div className="panel">
+                <div style={{ flex: 1, border: '1px solid #ddd', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column' }}>
                     <h2>📡 Communication</h2>
                     <div style={{
-                        width: '100%',
-                        height: '600px',
+                        flex: 1,
                         border: '1px solid #ccc',
                         borderRadius: '8px',
                         padding: '1rem',
