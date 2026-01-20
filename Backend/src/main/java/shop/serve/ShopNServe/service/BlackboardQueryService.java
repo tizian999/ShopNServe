@@ -13,55 +13,126 @@ public class BlackboardQueryService {
     public BlackboardQueryService(Neo4jClient neo4j) {
         this.neo4j = neo4j;
     }
-    public Map<String, Object> getGraph() {
+
+    public Map<String, Object> getGraph(String traceId) {
         String q = """
-                    MATCH (a)-[r]->(b)
-                    WHERE exists(a.name) AND exists(b.name)
-                      AND (a:UIComponent OR a:BackendComponent OR a:Capability OR a:MicroClient)
-                      AND (b:UIComponent OR b:BackendComponent OR b:Capability OR b:MicroClient)
-                    RETURN labels(a)[0] AS aLabel, a.name AS aName,
-                           type(r) AS rel,
-                           labels(b)[0] AS bLabel, b.name AS bName
-                """;
+            OPTIONAL MATCH (tLatest:Trace)
+            WITH tLatest
+            ORDER BY tLatest.startedAt DESC
+            LIMIT 1
+            WITH coalesce($traceId, tLatest.id) AS tid
+            MATCH (t:Trace {id: tid})
+            OPTIONAL MATCH (t)-[:HAS_EVENT]->(e:MessageEvent)
+            OPTIONAL MATCH (u:UIComponent)-[:SENDS]->(e)
+            OPTIONAL MATCH (e)-[:HANDLED_BY]->(b:BackendComponent)
+            OPTIONAL MATCH (e)-[:ABOUT]->(c:Capability)
+            RETURN
+              t.id AS traceId,
+              e.id AS eventId,
+              e.eventType AS eventType,
+              toString(e.timestamp) AS ts,
+              u.name AS uiName,
+              b.name AS backendName,
+              c.name AS capName
+        """;
 
         List<Map<String, Object>> edges = new ArrayList<>();
         Map<String, Map<String, Object>> nodes = new LinkedHashMap<>();
+        Set<String> edgeDedup = new HashSet<>();
 
-        neo4j.query(q).fetch().all().forEach(row -> {
-            String aLabel = Objects.toString(row.get("aLabel"), "");
-            String aName = Objects.toString(row.get("aName"), "");
-            String bLabel = Objects.toString(row.get("bLabel"), "");
-            String bName = Objects.toString(row.get("bName"), "");
-            String rel = Objects.toString(row.get("rel"), "");
+        neo4j.query(q)
+                .bind(traceId).to("traceId")
+                .fetch()
+                .all()
+                .forEach(row -> {
+                    String tid = Objects.toString(row.get("traceId"), "");
+                    if (tid.isBlank()) return;
 
-            if (aName.isBlank() || bName.isBlank() || aLabel.isBlank() || bLabel.isBlank() || rel.isBlank()) return;
+                    String tNodeId = "Trace:" + tid;
+                    nodes.putIfAbsent(tNodeId, Map.of("id", tNodeId, "label", tid, "type", "Trace"));
 
-            String aId = aLabel + ":" + aName;
-            String bId = bLabel + ":" + bName;
+                    String eventId   = Objects.toString(row.get("eventId"), "");
+                    String eventType = Objects.toString(row.get("eventType"), "");
+                    String ts        = Objects.toString(row.get("ts"), "");
 
-            nodes.putIfAbsent(aId, Map.of("id", aId, "label", aName, "type", aLabel));
-            nodes.putIfAbsent(bId, Map.of("id", bId, "label", bName, "type", bLabel));
+                    String uiName     = Objects.toString(row.get("uiName"), "");
+                    String backendName = Objects.toString(row.get("backendName"), "");
+                    String capName    = Objects.toString(row.get("capName"), "");
 
-            edges.add(Map.of("from", aId, "to", bId, "type", rel));
-        });
+                    String eNodeId = null;
+                    if (!eventId.isBlank()) {
+                        eNodeId = "MessageEvent:" + eventId;
+                        String eLabel = (eventType == null || eventType.isBlank() ? "EVENT" : eventType)
+                                + (ts == null || ts.isBlank() ? "" : (" @ " + ts));
+                        nodes.putIfAbsent(eNodeId, Map.of("id", eNodeId, "label", eLabel, "type", "MessageEvent"));
+                        addEdge(edges, edgeDedup, tNodeId, eNodeId, "HAS_EVENT");
+                    }
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("nodes", new ArrayList<>(nodes.values()));
-        result.put("edges", edges);
-        return result;
+                    String uNodeId = null;
+                    if (!uiName.isBlank()) {
+                        uNodeId = "UIComponent:" + uiName;
+                        nodes.putIfAbsent(uNodeId, Map.of("id", uNodeId, "label", uiName, "type", "UIComponent"));
+                        if (eNodeId != null) addEdge(edges, edgeDedup, uNodeId, eNodeId, "SENDS");
+                    }
+
+                    String bNodeId = null;
+                    if (!backendName.isBlank()) {
+                        bNodeId = "BackendComponent:" + backendName;
+                        nodes.putIfAbsent(bNodeId, Map.of("id", bNodeId, "label", backendName, "type", "BackendComponent"));
+                        if (eNodeId != null) addEdge(edges, edgeDedup, eNodeId, bNodeId, "HANDLED_BY");
+                    }
+
+                    String cNodeId = null;
+                    if (!capName.isBlank()) {
+                        cNodeId = "Capability:" + capName;
+                        nodes.putIfAbsent(cNodeId, Map.of("id", cNodeId, "label", capName, "type", "Capability"));
+                        if (eNodeId != null) addEdge(edges, edgeDedup, eNodeId, cNodeId, "ABOUT");
+                    }
+
+                    // ✅ Abgeleitete, “lesbare” Kanten (pro Trace)
+                    if (uNodeId != null && cNodeId != null && "REQUIRES".equalsIgnoreCase(eventType)) {
+                        addEdge(edges, edgeDedup, uNodeId, cNodeId, "REQUIRES");
+                    }
+                    if (bNodeId != null && cNodeId != null && "PROVIDES".equalsIgnoreCase(eventType)) {
+                        addEdge(edges, edgeDedup, bNodeId, cNodeId, "PROVIDES");
+                    }
+                    if (uNodeId != null && bNodeId != null) {
+                        addEdge(edges, edgeDedup, uNodeId, bNodeId, "COMMUNICATES_WITH");
+                    }
+                });
+
+        return Map.of(
+                "nodes", new ArrayList<>(nodes.values()),
+                "edges", edges
+        );
     }
-    public List<Map<String, Object>> getMessages(int limit) {
+
+    private static void addEdge(List<Map<String, Object>> edges, Set<String> dedup, String from, String to, String type) {
+        String k = from + "->" + to + "#" + type;
+        if (dedup.add(k)) {
+            edges.add(Map.of("from", from, "to", to, "type", type));
+        }
+    }
+
+    public List<Map<String, Object>> getMessages(int limit, String traceId) {
         String q = """
-            MATCH (u:UIComponent)-[:SENDS]->(e:MessageEvent)
+            OPTIONAL MATCH (tLatest:Trace)
+            WITH tLatest
+            ORDER BY tLatest.startedAt DESC
+            LIMIT 1
+            WITH coalesce($traceId, tLatest.id) AS tid
+            MATCH (t:Trace {id: tid})-[:HAS_EVENT]->(e:MessageEvent)
+            OPTIONAL MATCH (u:UIComponent)-[:SENDS]->(e)
             OPTIONAL MATCH (e)-[:HANDLED_BY]->(b:BackendComponent)
             RETURN
               e.id AS id,
-              u.name AS sender,
+              coalesce(u.name, 'unknown') AS sender,
               b.name AS receiver,
               e.eventType AS eventType,
               e.capability AS capability,
               e.payload AS payload,
-              toString(e.timestamp) AS timestamp
+              toString(e.timestamp) AS timestamp,
+              e.traceId AS traceId
             ORDER BY e.timestamp DESC
             LIMIT $limit
         """;
@@ -69,6 +140,7 @@ public class BlackboardQueryService {
         return new ArrayList<>(
                 neo4j.query(q)
                         .bind(limit).to("limit")
+                        .bind(traceId).to("traceId")
                         .fetch()
                         .all()
         );

@@ -5,15 +5,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 
-public record MessageEventRequest(Sender sender, List<Capability> capabilities, Object payload) {
-
+public record MessageEventRequest(
+        String traceId,
+        Sender sender,
+        List<Capability> capabilities,
+        Object payload
+) {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    public String traceIdOrNull() {
+        return (traceId == null || traceId.isBlank()) ? null : traceId;
+    }
+
+    @SuppressWarnings("unchecked")
     public Map<String, Object> payloadAsMap() {
         if (payload == null) return Map.of();
-        if (payload instanceof Map<?, ?> m) {
-            return (Map<String, Object>) m;
-        }
+        if (payload instanceof Map<?, ?> m) return (Map<String, Object>) m;
         return MAPPER.convertValue(payload, Map.class);
     }
 

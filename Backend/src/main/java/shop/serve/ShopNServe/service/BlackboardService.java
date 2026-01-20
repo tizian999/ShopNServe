@@ -6,74 +6,66 @@ import shop.serve.ShopNServe.model.BlackboardResponse;
 import shop.serve.ShopNServe.model.Capability;
 import shop.serve.ShopNServe.model.MessageEventRequest;
 
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class BlackboardService {
 
+    private final Map<Capability, CapabilityHandler> handlers = new EnumMap<>(Capability.class);
     private final AuthService authService;
-    private final GraphService graphService;
-    private final Map<Capability, CapabilityHandler> handlers;
 
-    public BlackboardService(AuthService authService, GraphService graphService, List<CapabilityHandler> handlerList) {
+    public BlackboardService(List<CapabilityHandler> handlerList, AuthService authService) {
         this.authService = authService;
-        this.graphService = graphService;
-        this.handlers = handlerList.stream().collect(Collectors.toMap(CapabilityHandler::capability, h -> h));
+        for (CapabilityHandler h : handlerList) {
+            handlers.put(h.capability(), h);
+        }
     }
 
     public BlackboardResponse handle(MessageEventRequest event, String authHeader) {
-        var caps = event.capabilities() == null ? List.<Capability>of() : event.capabilities();
+        List<Capability> caps = event.capabilities();
+        boolean isAuthentication = caps.contains(Capability.Authentication);
 
-        if (event.sender() == null || event.sender().component() == null || event.sender().component().isBlank()) {
-            return new BlackboardResponse(false, Map.of("error", "Missing sender.component"));
+        // Zentraler Auth-Guard: alles außer Authentication braucht JWT
+        if (!isAuthentication) {
+            if (!authService.validate(authHeader)) {
+                return unauthorized(event.traceIdOrNull());
+            }
         }
-        if (event.sender().application() != null && !event.sender().application().isBlank()) {
-            graphService.storeUiBelongsToApp(event.sender().component(), event.sender().application());
+
+        BlackboardResponse last = null;
+
+        for (Capability c : caps) {
+            CapabilityHandler h = handlers.get(c);
+            if (h == null) {
+                return new BlackboardResponse(false, Map.of(
+                        "error", "No handler for capability: " + c.name(),
+                        "traceId", event.traceIdOrNull()
+                ));
+            }
+
+            last = h.handle(event);
+
+            if (last == null) {
+                return new BlackboardResponse(false, Map.of(
+                        "error", "Handler returned null for: " + c.name(),
+                        "traceId", event.traceIdOrNull()
+                ));
+            }
+
+            if (!last.ok()) return last;
         }
-        if (caps.contains(Capability.Authentication)) {
-            graphService.storeMessageEvent(
-                    event.sender().component(),
-                    "REQUIRES",
-                    Capability.Authentication.name(),
-                    event.payload()
-            );
 
-            var h = handlers.get(Capability.Authentication);
-            if (h == null) return new BlackboardResponse(false, Map.of("error", "No AuthenticationHandler registered"));
-            return h.handle(event);
-        }
-        graphService.storeRequires(event.sender().component(), Capability.Authorization.name());
-        graphService.storeMessageEvent(
-                event.sender().component(),
-                "REQUIRES",
-                Capability.Authorization.name(),
-                null
-        );
+        return last != null
+                ? last
+                : new BlackboardResponse(true, Map.of("traceId", event.traceIdOrNull()));
+    }
 
-        boolean ok = authService.validateJwt(authHeader);
-        if (!ok) return new BlackboardResponse(false, Map.of("error", "Unauthorized"));
-        for (Capability cap : caps) {
-            if (cap == Capability.Authorization || cap == Capability.Authentication) continue;
-
-            graphService.storeRequires(event.sender().component(), cap.name());
-            graphService.storeMessageEvent(
-                    event.sender().component(),
-                    "REQUIRES",
-                    cap.name(),
-                    event.payload()
-            );
-        }
-        Capability primary = caps.stream()
-                .filter(c -> c != Capability.Authorization && c != Capability.Authentication)
-                .findFirst()
-                .orElse(null);
-
-        if (primary == null) return new BlackboardResponse(true, Map.of("info", "No business capability provided"));
-
-        var handler = handlers.get(primary);
-        if (handler == null) return new BlackboardResponse(true, Map.of("info", "No handler for capability: " + primary));
-        return handler.handle(event);
+    private BlackboardResponse unauthorized(String traceId) {
+        return new BlackboardResponse(false, Map.of(
+                "error", "Unauthorized",
+                "traceId", traceId
+        ));
     }
 }

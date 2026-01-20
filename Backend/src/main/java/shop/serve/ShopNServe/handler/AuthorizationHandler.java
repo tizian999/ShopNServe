@@ -4,45 +4,44 @@ import org.springframework.stereotype.Service;
 import shop.serve.ShopNServe.model.BlackboardResponse;
 import shop.serve.ShopNServe.model.Capability;
 import shop.serve.ShopNServe.model.MessageEventRequest;
+import shop.serve.ShopNServe.service.AuthService;
 import shop.serve.ShopNServe.service.GraphService;
-import shop.serve.ShopNServe.service.ProductCatalogService;
 
 import java.util.Map;
 
 @Service
-public class ProductlistHandler implements CapabilityHandler {
+public class AuthorizationHandler implements CapabilityHandler {
 
-    private final ProductCatalogService catalogService;
+    private final AuthService authService;
     private final GraphService graphService;
 
-    public ProductlistHandler(ProductCatalogService catalogService, GraphService graphService) {
-        this.catalogService = catalogService;
+    public AuthorizationHandler(AuthService authService, GraphService graphService) {
+        this.authService = authService;
         this.graphService = graphService;
     }
 
     @Override
     public Capability capability() {
-        return Capability.ProductList;
+        return Capability.Authorization;
     }
 
     @Override
     public BlackboardResponse handle(MessageEventRequest event) {
-        var products = catalogService.getProducts();
-
-        graphService.storeProvides("ProductService", Capability.ProductList.name());
-        graphService.storeCommunicatesWith(event.sender().component(), "ProductService");
+        String traceId = event.traceIdOrNull();
+        graphService.storeProvides("AuthService", Capability.Authorization.name());
+        graphService.storeCommunicatesWith(event.sender().component(), "AuthService");
 
         String usedTraceId = graphService.storeMessageEvent(
                 event.sender().component(),
-                "ProductService",
+                "AuthService",
                 "PROVIDES",
-                Capability.ProductList.name(),
-                Map.of("action", "listProducts"),
-                event.traceIdOrNull()
+                Capability.Authorization.name(),
+                Map.of("action", "check"),
+                traceId
         );
 
         return new BlackboardResponse(true, Map.of(
-                "productList", products,
+                "authorized", true,
                 "traceId", usedTraceId
         ));
     }

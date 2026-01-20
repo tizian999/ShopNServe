@@ -27,16 +27,21 @@ public class BlackboardController {
             @RequestHeader(value = "Authorization", required = false) String authHeader
     ) {
         BlackboardResponse resp = blackboardService.handle(event, authHeader);
-        return resp.ok() ? ResponseEntity.ok(resp) : ResponseEntity.status(401).body(resp);
+        return resp.ok()
+                ? ResponseEntity.ok(resp)
+                : ResponseEntity.status(401).body(resp);
     }
 
     @GetMapping("/graph")
-    public ResponseEntity<Map<String, Object>> getGraph() {
-        return ResponseEntity.ok(queryService.getGraph());
+    public ResponseEntity<Map<String, Object>> getGraph(@RequestParam(required = false) String traceId) {
+        return ResponseEntity.ok(queryService.getGraph(traceId));
     }
 
     @GetMapping("/messages")
-    public ResponseEntity<?> getMessages(@RequestParam(defaultValue = "50") int limit) {
-        return ResponseEntity.ok(queryService.getMessages(limit));
+    public ResponseEntity<?> getMessages(
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(required = false) String traceId
+    ) {
+        return ResponseEntity.ok(queryService.getMessages(limit, traceId));
     }
 }

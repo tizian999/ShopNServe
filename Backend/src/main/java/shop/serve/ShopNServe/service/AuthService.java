@@ -7,9 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class AuthService {
 
-    // DEMO users in-memory
     private final ConcurrentHashMap<String, String> users = new ConcurrentHashMap<>();
-
     private final JwtService jwtService;
 
     public AuthService(JwtService jwtService) {
@@ -35,8 +33,8 @@ public class AuthService {
         return new AuthResult(true, username, token, "registered");
     }
 
-    public boolean validateJwt(String authHeader) {
-        return jwtService.validate(authHeader);
+    public boolean validate(String authHeaderOrToken) {
+        return jwtService.validate(authHeaderOrToken);
     }
 
     public record AuthResult(boolean success, String username, String token, String message) {}

@@ -28,6 +28,7 @@ public class AuthenticationHandler implements CapabilityHandler {
     @Override
     public BlackboardResponse handle(MessageEventRequest event) {
         Map<String, Object> payload = event.payloadAsMap();
+        String traceId = event.traceIdOrNull();
 
         String action = String.valueOf(payload.getOrDefault("action", "login"));
         String username = String.valueOf(payload.getOrDefault("username", ""));
@@ -45,21 +46,26 @@ public class AuthenticationHandler implements CapabilityHandler {
         graphService.storeProvides("AuthService", Capability.Authentication.name());
         graphService.storeCommunicatesWith(event.sender().component(), "AuthService");
 
-        graphService.storeMessageEvent(
+        String usedTraceId = graphService.storeMessageEvent(
                 event.sender().component(),
                 "AuthService",
                 "PROVIDES",
                 Capability.Authentication.name(),
-                Map.of("username", username)
+                Map.of("username", username, "action", action),
+                traceId
         );
 
         if (!result.success()) {
-            return new BlackboardResponse(false, Map.of("error", result.message()));
+            return new BlackboardResponse(false, Map.of(
+                    "error", result.message(),
+                    "traceId", usedTraceId
+            ));
         }
 
         return new BlackboardResponse(true, Map.of(
                 "username", result.username(),
-                "token", result.token()
+                "token", result.token(),
+                "traceId", usedTraceId
         ));
     }
 }

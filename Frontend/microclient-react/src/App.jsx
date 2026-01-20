@@ -37,12 +37,18 @@ const COLORS = {
         REQUIRES: "#7c3aed",
         COMMUNICATES_WITH: "rgba(230,230,250,0.6)",
         PART_OF: "rgba(230,230,250,0.45)",
+        HAS_EVENT: "rgba(230,230,250,0.35)",
+        ABOUT: "rgba(230,230,250,0.35)",
+        HANDLED_BY: "rgba(230,230,250,0.45)",
+        SENDS: "rgba(230,230,250,0.5)",
     },
     node: {
         UIComponent: "rgba(124,58,237,0.15)",
         BackendComponent: "rgba(159,122,234,0.14)",
         Capability: "rgba(230,230,250,0.07)",
         MicroClient: "rgba(230,230,250,0.06)",
+        MessageEvent: "rgba(230,230,250,0.05)",
+        Trace: "rgba(230,230,250,0.08)",
         Default: "rgba(230,230,250,0.06)",
     },
 };
@@ -85,32 +91,414 @@ function stripeColor(eventType) {
     return "rgba(239,68,68,0.9)";
 }
 
+function pickTraceId(messages, wantedCapability) {
+    const arr = Array.isArray(messages) ? messages : [];
+    const withWanted = arr.filter((m) => (m?.capability || "").toLowerCase() === wantedCapability.toLowerCase());
+    const pickFrom = withWanted.length ? withWanted : arr;
+    const first = pickFrom[0];
+    const tid = first?.traceId;
+    return tid && String(tid).trim() !== "" ? String(tid) : "";
+}
+
+function buildTreeLayout(nodes, edges, showMessageNodes) {
+    const NODE_W = 320;
+    const COL_GAP = 140;
+    const ROW_GAP = 190;
+    const PAD_X = 24;
+    const PAD_Y = 24;
+
+    const baseNodes = (nodes || []).filter((n) => (showMessageNodes ? true : n.type !== "MessageEvent"));
+    const byId = new Map(baseNodes.map((n) => [n.id, n]));
+
+    const safeEdges = (edges || []).filter((e) => byId.has(e.from) && byId.has(e.to));
+
+    const out = new Map();
+    const indeg = new Map();
+    for (const n of baseNodes) {
+        out.set(n.id, []);
+        indeg.set(n.id, 0);
+    }
+    for (const e of safeEdges) {
+        out.get(e.from).push(e.to);
+        indeg.set(e.to, (indeg.get(e.to) || 0) + 1);
+    }
+
+    const traceNode = baseNodes.find((n) => n.type === "Trace");
+    let rootId =
+        traceNode?.id ||
+        baseNodes.find((n) => (indeg.get(n.id) || 0) === 0)?.id ||
+        baseNodes[0]?.id ||
+        null;
+
+    if (!rootId) return { nodes: [], width: "100%", height: "100%" };
+
+    const layerOf = new Map();
+    const q = [rootId];
+    layerOf.set(rootId, 0);
+
+    while (q.length) {
+        const cur = q.shift();
+        const curL = layerOf.get(cur) || 0;
+        for (const nxt of out.get(cur) || []) {
+            if (!layerOf.has(nxt)) {
+                layerOf.set(nxt, curL + 1);
+                q.push(nxt);
+            }
+        }
+    }
+
+    let maxLayer = 0;
+    for (const v of layerOf.values()) maxLayer = Math.max(maxLayer, v);
+    for (const n of baseNodes) {
+        if (!layerOf.has(n.id)) {
+            maxLayer += 1;
+            layerOf.set(n.id, maxLayer);
+        }
+    }
+
+    const layers = new Map();
+    for (const n of baseNodes) {
+        const L = layerOf.get(n.id) || 0;
+        if (!layers.has(L)) layers.set(L, []);
+        layers.get(L).push(n.id);
+    }
+
+    const typeRank = (t) => {
+        if (t === "Trace") return 0;
+        if (t === "UIComponent") return 1;
+        if (t === "MicroClient") return 2;
+        if (t === "BackendComponent") return 3;
+        if (t === "Capability") return 4;
+        if (t === "MessageEvent") return 5;
+        return 6;
+    };
+
+    for (const [L, ids] of layers.entries()) {
+        ids.sort((a, b) => {
+            const A = byId.get(a);
+            const B = byId.get(b);
+            const r = typeRank(A.type) - typeRank(B.type);
+            if (r !== 0) return r;
+            return (A.label || "").localeCompare(B.label || "");
+        });
+    }
+
+    const positioned = [];
+    const layerKeys = Array.from(layers.keys()).sort((a, b) => a - b);
+    const maxRows = Math.max(...layerKeys.map((L) => layers.get(L).length), 1);
+
+    for (const L of layerKeys) {
+        const ids = layers.get(L);
+        const layerCount = ids.length;
+        const topOffset = PAD_Y + ((maxRows - layerCount) * ROW_GAP) / 2;
+
+        ids.forEach((id, row) => {
+            const n = byId.get(id);
+            positioned.push({
+                ...n,
+                style: {
+                    position: "absolute",
+                    left: `${PAD_X + L * (NODE_W + COL_GAP)}px`,
+                    top: `${topOffset + row * ROW_GAP}px`,
+                    width: NODE_W,
+                },
+            });
+        });
+    }
+
+    const width = `${PAD_X * 2 + layerKeys.length * (NODE_W + COL_GAP)}px`;
+    const height = `${PAD_Y * 2 + maxRows * ROW_GAP}px`;
+
+    return { nodes: positioned, width, height };
+}
+
+function GraphPanel({
+                        title,
+                        traceId,
+                        setTraceId,
+                        graph,
+                        derived,
+                        showMessageNodes,
+                        updateXarrow,
+                        loading,
+                    }) {
+    const layout = useMemo(
+        () => buildTreeLayout(graph.nodes, graph.edges, showMessageNodes),
+        [graph.nodes, graph.edges, showMessageNodes]
+    );
+
+    useLayoutEffect(() => {
+        const t = setTimeout(updateXarrow, 150);
+        return () => clearTimeout(t);
+    }, [layout.nodes, graph.edges, updateXarrow]);
+
+    return (
+        <Card sx={{ bgcolor: "rgba(0,0,0,0.12)", border: `1px solid ${COLORS.border}`, borderRadius: 3, overflow: "hidden" }}>
+            <CardContent sx={{ pb: 2 }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}>
+                    <Typography variant="h6" sx={{ fontWeight: 900, color: COLORS.textPrimary }}>
+                        {title}
+                    </Typography>
+
+                    <Stack direction="row" alignItems="center" gap={1}>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                            TraceId:
+                        </Typography>
+                        <input
+                            type="text"
+                            value={traceId}
+                            onChange={(e) => setTraceId(e.target.value)}
+                            placeholder="auto / optional"
+                            style={{
+                                padding: "4px 10px",
+                                borderRadius: 6,
+                                border: `1px solid ${COLORS.border}`,
+                                background: COLORS.subtleBg,
+                                color: COLORS.textPrimary,
+                                fontWeight: 700,
+                                fontSize: 14,
+                                outline: "none",
+                                minWidth: 260,
+                            }}
+                        />
+                        <Chip
+                            size="small"
+                            label={loading ? "Loading…" : `Nodes ${graph.nodes.length} · Edges ${graph.edges.length}`}
+                            sx={{ bgcolor: COLORS.subtleBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.border}`, fontWeight: 800 }}
+                        />
+                    </Stack>
+                </Stack>
+
+                <Divider sx={{ my: 1.5, borderColor: COLORS.border }} />
+
+                <Box sx={{ width: "100%", height: 540, overflow: "auto", borderRadius: 2 }}>
+                    <Box sx={{ position: "relative", width: layout.width, height: layout.height, minHeight: 540 }}>
+                        <Xwrapper>
+                            {layout.nodes.map((node) => {
+                                const provides = derived.provides[node.id] ?? [];
+                                const requires = derived.requires[node.id] ?? [];
+                                const comms = derived.comms[node.id] ?? [];
+                                const partOf = derived.partOf[node.id] ?? [];
+
+                                return (
+                                    <Card
+                                        id={node.id}
+                                        key={node.id}
+                                        sx={{
+                                            bgcolor: COLORS.cardPaper,
+                                            color: COLORS.textPrimary,
+                                            borderRadius: 3,
+                                            border: `1px solid ${COLORS.border}`,
+                                            boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
+                                            ...node.style,
+                                        }}
+                                    >
+                                        <CardContent sx={{ p: 2 }}>
+                                            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                                                <Chip
+                                                    size="small"
+                                                    label={node.type}
+                                                    sx={{
+                                                        bgcolor: nodeAccent(node.type),
+                                                        color: COLORS.textPrimary,
+                                                        border: `1px solid ${COLORS.border}`,
+                                                        fontWeight: 800,
+                                                    }}
+                                                />
+                                                <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                                                    {node.id}
+                                                </Typography>
+                                            </Stack>
+
+                                            <Typography variant="h6" sx={{ mt: 1, lineHeight: 1.2 }}>
+                                                {node.label}
+                                            </Typography>
+
+                                            {partOf.length > 0 && (
+                                                <Typography variant="body2" sx={{ mt: 0.75, color: COLORS.textSecondary }}>
+                                                    Part of: <b>{partOf.join(", ")}</b>
+                                                </Typography>
+                                            )}
+
+                                            <Divider sx={{ my: 1.25, borderColor: COLORS.border }} />
+
+                                            {provides.length === 0 && requires.length === 0 && comms.length === 0 ? (
+                                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                                                    No relations yet.
+                                                </Typography>
+                                            ) : (
+                                                <Stack spacing={1}>
+                                                    {provides.length > 0 && (
+                                                        <Box>
+                                                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                                                                <Chip label="PROVIDES" size="small" sx={relChip("PROVIDES")} />
+                                                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                                                                    {provides.length} capability(s)
+                                                                </Typography>
+                                                            </Stack>
+                                                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                                                {provides.map((cap) => (
+                                                                    <Chip
+                                                                        key={cap}
+                                                                        label={cap}
+                                                                        size="small"
+                                                                        sx={{ bgcolor: COLORS.subtleBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.border}` }}
+                                                                    />
+                                                                ))}
+                                                            </Stack>
+                                                        </Box>
+                                                    )}
+
+                                                    {requires.length > 0 && (
+                                                        <Box>
+                                                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                                                                <Chip label="REQUIRES" size="small" sx={relChip("REQUIRES")} />
+                                                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                                                                    {requires.length} capability(s)
+                                                                </Typography>
+                                                            </Stack>
+                                                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                                                {requires.map((cap) => (
+                                                                    <Chip
+                                                                        key={cap}
+                                                                        label={cap}
+                                                                        size="small"
+                                                                        sx={{ bgcolor: COLORS.subtleBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.border}` }}
+                                                                    />
+                                                                ))}
+                                                            </Stack>
+                                                        </Box>
+                                                    )}
+
+                                                    {comms.length > 0 && (
+                                                        <Box>
+                                                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                                                                <Chip label="COMMUNICATES_WITH" size="small" sx={relChip("COMMUNICATES_WITH")} />
+                                                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                                                                    {comms.length} target(s)
+                                                                </Typography>
+                                                            </Stack>
+                                                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                                                {comms.map((t) => (
+                                                                    <Chip
+                                                                        key={t}
+                                                                        label={t}
+                                                                        size="small"
+                                                                        sx={{ bgcolor: COLORS.subtleBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.border}` }}
+                                                                    />
+                                                                ))}
+                                                            </Stack>
+                                                        </Box>
+                                                    )}
+                                                </Stack>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                );
+                            })}
+
+                            {graph.edges
+                                .filter(
+                                    (e) => layout.nodes.some((n) => n.id === e.from) && layout.nodes.some((n) => n.id === e.to)
+                                )
+                                .map((edge, i) => {
+                                    const fromNode = layout.nodes.find((n) => n.id === edge.from);
+                                    const toNode = layout.nodes.find((n) => n.id === edge.to);
+                                    if (!fromNode || !toNode) return null;
+
+                                    const fromX = parseFloat(String(fromNode.style.left).replace("px", "")) || 0;
+                                    const toX = parseFloat(String(toNode.style.left).replace("px", "")) || 0;
+
+                                    const startAnchor = fromX <= toX ? "right" : "left";
+                                    const endAnchor = fromX <= toX ? "left" : "right";
+
+                                    return (
+                                        <Xarrow
+                                            key={`${edge.from}-${edge.to}-${edge.type}-${i}`}
+                                            start={edge.from}
+                                            end={edge.to}
+                                            color={COLORS.rel[edge.type] ?? COLORS.textSecondary}
+                                            strokeWidth={2}
+                                            headSize={5}
+                                            path="smooth"
+                                            startAnchor={startAnchor}
+                                            endAnchor={endAnchor}
+                                            dashness={edge.type === "COMMUNICATES_WITH" || edge.type === "PART_OF"}
+                                            labels={
+                                                <div
+                                                    style={{
+                                                        padding: "2px 8px",
+                                                        borderRadius: 999,
+                                                        background: "rgba(0,0,0,0.55)",
+                                                        border: `1px solid ${COLORS.border}`,
+                                                        color: COLORS.textPrimary,
+                                                        fontSize: 12,
+                                                        fontWeight: 800,
+                                                    }}
+                                                >
+                                                    {edge.type}
+                                                </div>
+                                            }
+                                        />
+                                    );
+                                })}
+                        </Xwrapper>
+                    </Box>
+                </Box>
+            </CardContent>
+        </Card>
+    );
+}
+
 export default function App() {
     const [view, setView] = useState("graph");
-
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
-
     const [msgError, setMsgError] = useState(null);
     const [messages, setMessages] = useState([]);
-
     const [autoRefresh, setAutoRefresh] = useState(true);
-    const [graph, setGraph] = useState({ nodes: [], edges: [] });
+    const [loginTraceId, setLoginTraceId] = useState("");
+    const [productTraceId, setProductTraceId] = useState("");
+    const [loginGraph, setLoginGraph] = useState({ nodes: [], edges: [] });
+    const [productGraph, setProductGraph] = useState({ nodes: [], edges: [] });
+    const [showMessageNodes, setShowMessageNodes] = useState(false);
 
     const updateXarrow = useXarrow();
-    const loadGraph = async () => {
+
+    const loadMessages = async () => {
+        try {
+            setMsgError(null);
+            const res = await fetch("/api/blackboard/messages?limit=200"); // load more so we can auto-pick traceIds
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            const arr = Array.isArray(data) ? data : [];
+            setMessages(arr);
+            setLoginTraceId((prev) => (prev && prev.trim() ? prev : pickTraceId(arr, "Authentication")));
+            setProductTraceId((prev) => (prev && prev.trim() ? prev : pickTraceId(arr, "ProductList")));
+        } catch (e) {
+            setMsgError(String(e?.message ?? e));
+        }
+    };
+
+    const loadGraphFor = async (traceId, setter) => {
+        let url = "/api/blackboard/graph";
+        if (traceId && traceId.trim() !== "") url += "?traceId=" + encodeURIComponent(traceId.trim());
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+        const edges = Array.isArray(data?.edges) ? data.edges : [];
+        setter({ nodes, edges });
+    };
+
+    const loadBothGraphs = async () => {
         try {
             setLoading(true);
             setError(null);
-
-            const res = await fetch("/api/blackboard/graph");
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-            const data = await res.json();
-            const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
-            const edges = Array.isArray(data?.edges) ? data.edges : [];
-
-            setGraph({ nodes, edges });
+            await Promise.all([
+                loadGraphFor(loginTraceId, setLoginGraph),
+                loadGraphFor(productTraceId, setProductGraph),
+            ]);
         } catch (e) {
             setError(String(e?.message ?? e));
         } finally {
@@ -118,117 +506,63 @@ export default function App() {
         }
     };
 
-    const loadMessages = async () => {
-        try {
-            setMsgError(null);
-            const res = await fetch("/api/blackboard/messages?limit=50");
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-            setMessages(Array.isArray(data) ? data : []);
-        } catch (e) {
-            setMsgError(String(e?.message ?? e));
-        }
-    };
+    useEffect(() => {
+        loadMessages();
+    }, []);
 
     useEffect(() => {
-        loadGraph();
-        loadMessages();
+        loadBothGraphs();
+    }, [loginTraceId, productTraceId]);
 
+    useEffect(() => {
         if (!autoRefresh) return;
-
         const interval = setInterval(() => {
-            loadGraph();
             loadMessages();
+            loadBothGraphs();
         }, 2000);
-
         return () => clearInterval(interval);
-    }, [autoRefresh]);
-    const derived = useMemo(() => {
-        const byId = new Map();
-        graph.nodes.forEach((n) => byId.set(n.id, n));
+    }, [autoRefresh, loginTraceId, productTraceId]);
 
-        const provides = new Map();
-        const requires = new Map();
-        const comms = new Map();
-        const partOf = new Map();
+    const makeDerived = (graph) =>
+        useMemo(() => {
+            const byId = new Map();
+            graph.nodes.forEach((n) => byId.set(n.id, n));
 
-        const add = (map, key, value) => {
-            if (!map.has(key)) map.set(key, new Set());
-            map.get(key).add(value);
-        };
+            const provides = new Map();
+            const requires = new Map();
+            const comms = new Map();
+            const partOf = new Map();
 
-        for (const e of graph.edges) {
-            const from = byId.get(e.from);
-            const to = byId.get(e.to);
-            if (!from || !to) continue;
+            const add = (map, key, value) => {
+                if (!map.has(key)) map.set(key, new Set());
+                map.get(key).add(value);
+            };
 
-            if (e.type === "PROVIDES") add(provides, e.from, to.label);
-            if (e.type === "REQUIRES") add(requires, e.from, to.label);
-            if (e.type === "COMMUNICATES_WITH") add(comms, e.from, to.label);
-            if (e.type === "PART_OF") add(partOf, e.from, to.label);
-        }
+            for (const e of graph.edges) {
+                const from = byId.get(e.from);
+                const to = byId.get(e.to);
+                if (!from || !to) continue;
 
-        const toArrMap = (m) =>
-            Object.fromEntries(Array.from(m.entries()).map(([k, v]) => [k, Array.from(v)]));
+                if (e.type === "PROVIDES") add(provides, e.from, to.label);
+                if (e.type === "REQUIRES") add(requires, e.from, to.label);
+                if (e.type === "COMMUNICATES_WITH") add(comms, e.from, to.label);
+                if (e.type === "PART_OF") add(partOf, e.from, to.label);
+            }
 
-        return {
-            byId,
-            provides: toArrMap(provides),
-            requires: toArrMap(requires),
-            comms: toArrMap(comms),
-            partOf: toArrMap(partOf),
-        };
-    }, [graph]);
-    const layout = useMemo(() => {
-        const groups = {
-            UIComponent: [],
-            MicroClient: [],
-            BackendComponent: [],
-            Capability: [],
-            Other: [],
-        };
+            const toArrMap = (m) =>
+                Object.fromEntries(Array.from(m.entries()).map(([k, v]) => [k, Array.from(v)]));
 
-        for (const n of graph.nodes) {
-            if (groups[n.type]) groups[n.type].push(n);
-            else groups.Other.push(n);
-        }
+            return {
+                byId,
+                provides: toArrMap(provides),
+                requires: toArrMap(requires),
+                comms: toArrMap(comms),
+                partOf: toArrMap(partOf),
+            };
+        }, [graph]);
 
-        Object.values(groups).forEach((arr) => arr.sort((a, b) => a.label.localeCompare(b.label)));
-
-        const columns = ["UIComponent", "MicroClient", "BackendComponent", "Capability", "Other"]
-            .filter((k) => groups[k].length > 0)
-            .map((k) => ({ key: k, nodes: groups[k] }));
-
-        const COLUMN_WIDTH = 360;
-        const ROW_HEIGHT = 220;
-        const PADDING_X = 24;
-        const PADDING_Y = 24;
-
-        const positioned = [];
-        columns.forEach((col, colIdx) => {
-            col.nodes.forEach((n, rowIdx) => {
-                positioned.push({
-                    ...n,
-                    style: {
-                        position: "absolute",
-                        left: `${PADDING_X + colIdx * COLUMN_WIDTH}px`,
-                        top: `${PADDING_Y + rowIdx * ROW_HEIGHT}px`,
-                        width: 320,
-                    },
-                });
-            });
-        });
-
-        const width = `${PADDING_X * 2 + columns.length * COLUMN_WIDTH}px`;
-        const height = `${PADDING_Y * 2 + Math.max(1, ...columns.map((c) => c.nodes.length)) * ROW_HEIGHT}px`;
-
-        return { nodes: positioned, width, height };
-    }, [graph.nodes]);
-
-    useLayoutEffect(() => {
-        const t = setTimeout(updateXarrow, 150);
-        return () => clearTimeout(t);
-    }, [layout.nodes, graph.edges, updateXarrow]);
+    const loginDerived = makeDerived(loginGraph);
+    const productDerived = makeDerived(productGraph);
 
     const legend = (
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -239,165 +573,29 @@ export default function App() {
         </Stack>
     );
 
-    const GraphView = () => (
-        <Box sx={{ width: "100%", height: "100%", overflow: "auto", borderRadius: 2 }}>
-            <Box sx={{ position: "relative", width: layout.width, height: layout.height, minHeight: 420 }}>
-                <Xwrapper>
-                    {layout.nodes.map((node) => {
-                        const provides = derived.provides[node.id] ?? [];
-                        const requires = derived.requires[node.id] ?? [];
-                        const comms = derived.comms[node.id] ?? [];
-                        const partOf = derived.partOf[node.id] ?? [];
-
-                        return (
-                            <Card
-                                id={node.id}
-                                key={node.id}
-                                sx={{
-                                    bgcolor: COLORS.cardPaper,
-                                    color: COLORS.textPrimary,
-                                    borderRadius: 3,
-                                    border: `1px solid ${COLORS.border}`,
-                                    boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
-                                    ...node.style,
-                                }}
-                            >
-                                <CardContent sx={{ p: 2 }}>
-                                    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-                                        <Chip
-                                            size="small"
-                                            label={node.type}
-                                            sx={{
-                                                bgcolor: nodeAccent(node.type),
-                                                color: COLORS.textPrimary,
-                                                border: `1px solid ${COLORS.border}`,
-                                                fontWeight: 800,
-                                            }}
-                                        />
-                                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
-                                            {node.id}
-                                        </Typography>
-                                    </Stack>
-
-                                    <Typography variant="h6" sx={{ mt: 1, lineHeight: 1.2 }}>
-                                        {node.label}
-                                    </Typography>
-
-                                    {partOf.length > 0 && (
-                                        <Typography variant="body2" sx={{ mt: 0.75, color: COLORS.textSecondary }}>
-                                            Part of: <b>{partOf.join(", ")}</b>
-                                        </Typography>
-                                    )}
-
-                                    <Divider sx={{ my: 1.25, borderColor: COLORS.border }} />
-
-                                    {provides.length === 0 && requires.length === 0 && comms.length === 0 ? (
-                                        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                                            No relations yet.
-                                        </Typography>
-                                    ) : (
-                                        <Stack spacing={1}>
-                                            {provides.length > 0 && (
-                                                <Box>
-                                                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                                                        <Chip label="PROVIDES" size="small" sx={relChip("PROVIDES")} />
-                                                        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                                                            {provides.length} capability(s)
-                                                        </Typography>
-                                                    </Stack>
-                                                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                                        {provides.map((cap) => (
-                                                            <Chip
-                                                                key={cap}
-                                                                label={cap}
-                                                                size="small"
-                                                                sx={{ bgcolor: COLORS.subtleBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.border}` }}
-                                                            />
-                                                        ))}
-                                                    </Stack>
-                                                </Box>
-                                            )}
-
-                                            {requires.length > 0 && (
-                                                <Box>
-                                                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                                                        <Chip label="REQUIRES" size="small" sx={relChip("REQUIRES")} />
-                                                        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                                                            {requires.length} capability(s)
-                                                        </Typography>
-                                                    </Stack>
-                                                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                                        {requires.map((cap) => (
-                                                            <Chip
-                                                                key={cap}
-                                                                label={cap}
-                                                                size="small"
-                                                                sx={{ bgcolor: COLORS.subtleBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.border}` }}
-                                                            />
-                                                        ))}
-                                                    </Stack>
-                                                </Box>
-                                            )}
-
-                                            {comms.length > 0 && (
-                                                <Box>
-                                                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                                                        <Chip label="COMMUNICATES_WITH" size="small" sx={relChip("COMMUNICATES_WITH")} />
-                                                        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                                                            {comms.length} target(s)
-                                                        </Typography>
-                                                    </Stack>
-                                                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                                        {comms.map((t) => (
-                                                            <Chip
-                                                                key={t}
-                                                                label={t}
-                                                                size="small"
-                                                                sx={{ bgcolor: COLORS.subtleBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.border}` }}
-                                                            />
-                                                        ))}
-                                                    </Stack>
-                                                </Box>
-                                            )}
-                                        </Stack>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        );
-                    })}
-
-                    {graph.edges.map((edge, i) => (
-                        <Xarrow
-                            key={`${edge.from}-${edge.to}-${edge.type}-${i}`}
-                            start={edge.from}
-                            end={edge.to}
-                            color={COLORS.rel[edge.type] ?? COLORS.textSecondary}
-                            strokeWidth={2}
-                            headSize={5}
-                            path="grid"
-                            startAnchor="right"
-                            endAnchor="left"
-                            dashness={edge.type === "COMMUNICATES_WITH" || edge.type === "PART_OF"}
-                            labels={
-                                <div
-                                    style={{
-                                        padding: "2px 8px",
-                                        borderRadius: 999,
-                                        background: "rgba(0,0,0,0.55)",
-                                        border: `1px solid ${COLORS.border}`,
-                                        color: COLORS.textPrimary,
-                                        fontSize: 12,
-                                        fontWeight: 800,
-                                    }}
-                                >
-                                    {edge.type}
-                                </div>
-                            }
-                        />
-                    ))}
-                </Xwrapper>
-            </Box>
-        </Box>
+    const GraphsView = () => (
+        <Stack spacing={2} sx={{ height: "100%", overflow: "auto" }}>
+            <GraphPanel
+                title="Login Trace (Authentication)"
+                traceId={loginTraceId}
+                setTraceId={setLoginTraceId}
+                graph={loginGraph}
+                derived={loginDerived}
+                showMessageNodes={showMessageNodes}
+                updateXarrow={updateXarrow}
+                loading={loading}
+            />
+            <GraphPanel
+                title="ProductList Trace (ProductList + Auth check)"
+                traceId={productTraceId}
+                setTraceId={setProductTraceId}
+                graph={productGraph}
+                derived={productDerived}
+                showMessageNodes={showMessageNodes}
+                updateXarrow={updateXarrow}
+                loading={loading}
+            />
+        </Stack>
     );
 
     const MessagesView = () => (
@@ -448,6 +646,10 @@ export default function App() {
                                 ) : null}
                             </Typography>
 
+                            <Typography variant="body2" sx={{ mt: 0.75, color: COLORS.textSecondary }}>
+                                Trace: <b>{m.traceId ?? "—"}</b>
+                            </Typography>
+
                             {m.payload && String(m.payload).trim() !== "" && (
                                 <pre
                                     style={{
@@ -475,9 +677,7 @@ export default function App() {
             })}
 
             {messages.length === 0 && !msgError && (
-                <Typography sx={{ opacity: 0.7, color: COLORS.textSecondary }}>
-                    No messages available yet. Send events (Login / ProductList) and reload.
-                </Typography>
+                <Typography sx={{ opacity: 0.7, color: COLORS.textSecondary }}>No messages available yet.</Typography>
             )}
         </Box>
     );
@@ -487,66 +687,10 @@ export default function App() {
             <Stack spacing={2}>
                 <Card sx={{ bgcolor: COLORS.cardPaper, border: `1px solid ${COLORS.border}`, borderRadius: 3 }}>
                     <CardContent>
-                        <Typography variant="h6">Nodes ({graph.nodes.length})</Typography>
+                        <Typography variant="h6">Info</Typography>
                         <Typography variant="body2" sx={{ color: COLORS.textSecondary, mt: 0.5 }}>
-                            Überblick über alle Knoten, gruppiert nach Typ.
+                            Zwei getrennte Graphen anhand von TraceIds. Du kannst die TraceIds oben pro Panel überschreiben.
                         </Typography>
-
-                        <Divider sx={{ my: 1.5, borderColor: COLORS.border }} />
-
-                        {["UIComponent", "MicroClient", "BackendComponent", "Capability", "Other"].map((t) => {
-                            const list = graph.nodes.filter((n) => n.type === t);
-                            if (list.length === 0) return null;
-                            return (
-                                <List
-                                    key={t}
-                                    dense
-                                    subheader={
-                                        <ListSubheader sx={{ bgcolor: "transparent", color: COLORS.textSecondary }}>
-                                            {t} ({list.length})
-                                        </ListSubheader>
-                                    }
-                                >
-                                    {list.map((n) => (
-                                        <ListItem key={n.id} disableGutters>
-                                            <ListItemText
-                                                primary={<span style={{ color: COLORS.textPrimary, fontWeight: 800 }}>{n.label}</span>}
-                                                secondary={<span style={{ color: COLORS.textSecondary }}>{n.id}</span>}
-                                            />
-                                        </ListItem>
-                                    ))}
-                                </List>
-                            );
-                        })}
-                    </CardContent>
-                </Card>
-
-                <Card sx={{ bgcolor: COLORS.cardPaper, border: `1px solid ${COLORS.border}`, borderRadius: 3 }}>
-                    <CardContent>
-                        <Typography variant="h6">Edges ({graph.edges.length})</Typography>
-                        <Typography variant="body2" sx={{ color: COLORS.textSecondary, mt: 0.5 }}>
-                            Alle Beziehungen aus Neo4j.
-                        </Typography>
-
-                        <Divider sx={{ my: 1.5, borderColor: COLORS.border }} />
-
-                        <List dense>
-                            {graph.edges.map((e, idx) => (
-                                <ListItem key={idx} disableGutters>
-                                    <ListItemText
-                                        primary={
-                                            <span style={{ color: COLORS.textPrimary }}>
-                        <b>{e.type}</b>: {e.from} → {e.to}
-                      </span>
-                                        }
-                                        secondary={<span style={{ color: COLORS.textSecondary }}>({e.from.split(":")[0]} → {e.to.split(":")[0]})</span>}
-                                    />
-                                </ListItem>
-                            ))}
-                            {graph.edges.length === 0 && (
-                                <Typography sx={{ opacity: 0.7, color: COLORS.textSecondary }}>No edges available.</Typography>
-                            )}
-                        </List>
                     </CardContent>
                 </Card>
             </Stack>
@@ -578,10 +722,15 @@ export default function App() {
                             label={<Typography variant="body2" sx={{ color: COLORS.chipText }}>Auto Refresh</Typography>}
                         />
 
+                        <FormControlLabel
+                            control={<Switch checked={showMessageNodes} onChange={(e) => setShowMessageNodes(e.target.checked)} size="small" />}
+                            label={<Typography variant="body2" sx={{ color: COLORS.chipText }}>Show Message Nodes</Typography>}
+                        />
+
                         <Button
                             onClick={() => {
-                                loadGraph();
                                 loadMessages();
+                                loadBothGraphs();
                             }}
                             startIcon={<RefreshIcon />}
                             variant="contained"
@@ -603,8 +752,7 @@ export default function App() {
             <Box sx={{ px: 2, pt: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
                 {legend}
                 <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                    Nodes: <b>{graph.nodes.length}</b> · Edges: <b>{graph.edges.length}</b> · Messages:{" "}
-                    <b>{messages.length}</b>
+                    Messages: <b>{messages.length}</b>
                 </Typography>
             </Box>
 
@@ -620,9 +768,9 @@ export default function App() {
                     "& .MuiTabs-indicator": { backgroundColor: COLORS.primary },
                 }}
             >
-                <Tab label="Graph" value="graph" />
+                <Tab label="Graphs" value="graph" />
                 <Tab label="Messages" value="messages" />
-                <Tab label="Relations" value="relations" />
+                <Tab label="Info" value="relations" />
             </Tabs>
 
             <Box sx={{ p: 2, flexGrow: 1, overflow: "hidden" }}>
@@ -641,7 +789,7 @@ export default function App() {
                     </Alert>
                 )}
 
-                {view === "graph" && <GraphView />}
+                {view === "graph" && <GraphsView />}
                 {view === "messages" && <MessagesView />}
                 {view === "relations" && <RelationsView />}
             </Box>
