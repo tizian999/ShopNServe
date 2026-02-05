@@ -138,6 +138,8 @@ const quantity = ref<number>(1);
 watch(form, () => (msg.value = ""), { deep: true });
 
 const JWT_KEY = "jwt";
+const SESSION_KEY = "sessionId";
+
 function getJwt(): string | null {
   return localStorage.getItem(JWT_KEY);
 }
@@ -148,10 +150,29 @@ function clearJwt() {
   localStorage.removeItem(JWT_KEY);
 }
 
+function getSessionId(): string | null {
+  return localStorage.getItem(SESSION_KEY);
+}
+function setSessionId(id: string) {
+  localStorage.setItem(SESSION_KEY, id);
+}
+function clearSessionId() {
+  localStorage.removeItem(SESSION_KEY);
+}
+
 function newTraceId(): string {
   // @ts-ignore
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getOrCreateSessionId(): string {
+  const existing = getSessionId();
+  if (existing) return existing;
+
+  const id = newTraceId();
+  setSessionId(id);
+  return id;
 }
 
 async function postBlackboardEvent(params: {
@@ -198,7 +219,9 @@ async function postBlackboardEvent(params: {
 
 async function login() {
   msg.value = "";
+
   const tid = newTraceId();
+  setSessionId(tid);
 
   const { status, json } = await postBlackboardEvent({
     traceId: tid,
@@ -213,6 +236,7 @@ async function login() {
 
   if (status === 401) {
     msg.value = "401 on Authentication. Backend treats it as non-auth request (capability mapping issue).";
+    clearSessionId();
     return;
   }
 
@@ -220,13 +244,16 @@ async function login() {
     setJwt(json.data.token);
     user.value = json.data.username ?? form.value.username;
   } else {
+    clearSessionId();
     msg.value = json?.data?.error || "Login failed";
   }
 }
 
 async function registerUser() {
   msg.value = "";
+
   const tid = newTraceId();
+  setSessionId(tid);
 
   const { status, json } = await postBlackboardEvent({
     traceId: tid,
@@ -241,6 +268,7 @@ async function registerUser() {
 
   if (status === 401) {
     msg.value = "401 on Authentication. Backend treats it as non-auth request (capability mapping issue).";
+    clearSessionId();
     return;
   }
 
@@ -248,6 +276,7 @@ async function registerUser() {
     setJwt(json.data.token);
     user.value = json.data.username ?? form.value.username;
   } else {
+    clearSessionId();
     msg.value = json?.data?.error || "Registration failed";
   }
 }
@@ -258,13 +287,15 @@ function logout() {
   products.value = [];
   selected.value = null;
   form.value = { username: "", password: "" };
+
   clearJwt();
+  clearSessionId();
 }
 
 async function loadProducts() {
   msg.value = "";
 
-  const tid = newTraceId();
+  const tid = getOrCreateSessionId();
 
   const { status, json } = await postBlackboardEvent({
     traceId: tid,
@@ -274,6 +305,9 @@ async function loadProducts() {
   });
 
   if (status === 401) {
+    clearJwt();
+    clearSessionId();
+    user.value = null;
     msg.value = json?.data?.error || "Unauthorized (JWT missing/invalid)";
     return;
   }
@@ -294,7 +328,7 @@ async function order() {
   msg.value = "";
   if (!selected.value) return;
 
-  const tid = newTraceId();
+  const tid = getOrCreateSessionId();
 
   const { status, json } = await postBlackboardEvent({
     traceId: tid,
@@ -304,6 +338,9 @@ async function order() {
   });
 
   if (status === 401) {
+    clearJwt();
+    clearSessionId();
+    user.value = null;
     msg.value = json?.data?.error || "Unauthorized (JWT missing/invalid)";
     return;
   }

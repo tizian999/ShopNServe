@@ -43,29 +43,31 @@ public class AuthenticationHandler implements CapabilityHandler {
                         ? authService.register(username, password)
                         : authService.login(username, password);
 
-        graphService.storeProvides("AuthService", Capability.Authentication.name());
-        graphService.storeCommunicatesWith(event.sender().component(), "AuthService");
+        String usedTraceId = (traceId == null || traceId.isBlank()) ? java.util.UUID.randomUUID().toString() : traceId;
 
-        String usedTraceId = graphService.storeMessageEvent(
+        graphService.storeProvides(usedTraceId, "AuthService", Capability.Authentication.name());
+        graphService.storeCommunicatesWith(usedTraceId, event.sender().component(), "AuthService");
+
+        String storedTraceId = graphService.storeMessageEvent(
                 event.sender().component(),
                 "AuthService",
                 "PROVIDES",
                 Capability.Authentication.name(),
                 Map.of("username", username, "action", action),
-                traceId
+                usedTraceId
         );
 
         if (!result.success()) {
             return new BlackboardResponse(false, Map.of(
                     "error", result.message(),
-                    "traceId", usedTraceId
+                    "traceId", storedTraceId
             ));
         }
 
         return new BlackboardResponse(true, Map.of(
                 "username", result.username(),
                 "token", result.token(),
-                "traceId", usedTraceId
+                "traceId", storedTraceId
         ));
     }
 }

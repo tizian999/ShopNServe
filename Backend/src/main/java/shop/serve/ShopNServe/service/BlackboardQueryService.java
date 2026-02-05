@@ -14,6 +14,21 @@ public class BlackboardQueryService {
         this.neo4j = neo4j;
     }
 
+    public List<Map<String, Object>> getTraces(int limit) {
+        return new ArrayList<>(neo4j.query("""
+        MATCH (t:Trace)
+        WITH t
+        ORDER BY t.startedAt DESC
+        RETURN
+          t.id AS id,
+          toString(t.startedAt) AS startedAt
+        LIMIT $limit
+    """)
+                .bind(limit).to("limit")
+                .fetch()
+                .all());
+    }
+
     public Map<String, Object> getGraph(String traceId) {
         String q = """
             OPTIONAL MATCH (tLatest:Trace)
@@ -89,7 +104,6 @@ public class BlackboardQueryService {
                         if (eNodeId != null) addEdge(edges, edgeDedup, eNodeId, cNodeId, "ABOUT");
                     }
 
-                    // ✅ Abgeleitete, “lesbare” Kanten (pro Trace)
                     if (uNodeId != null && cNodeId != null && "REQUIRES".equalsIgnoreCase(eventType)) {
                         addEdge(edges, edgeDedup, uNodeId, cNodeId, "REQUIRES");
                     }

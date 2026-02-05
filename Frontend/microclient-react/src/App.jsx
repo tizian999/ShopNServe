@@ -1,24 +1,21 @@
-import React, { useEffect, useMemo, useState, useLayoutEffect } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+    AppBar,
+    Toolbar,
+    Typography,
     Box,
     Card,
     CardContent,
-    Typography,
+    Divider,
     List,
     ListItem,
     ListItemText,
-    ListSubheader,
-    Chip,
-    Alert,
-    AppBar,
-    Tabs,
-    Toolbar,
-    Tab,
-    Button,
     Stack,
+    Chip,
     Switch,
     FormControlLabel,
-    Divider,
+    Button,
+    Alert,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import Xarrow, { Xwrapper, useXarrow } from "react-xarrows";
@@ -54,18 +51,18 @@ const COLORS = {
 };
 
 function relChip(relType) {
-    const bg = COLORS.rel[relType] ?? "rgba(230,230,250,0.25)";
+    const bg = (COLORS.rel && COLORS.rel[relType]) ? COLORS.rel[relType] : "rgba(230,230,250,0.25)";
     return {
         bgcolor: bg,
         color: COLORS.chipText,
         borderRadius: 999,
-        fontWeight: 700,
+        fontWeight: 800,
         border: `1px solid ${COLORS.border}`,
     };
 }
 
 function nodeAccent(type) {
-    return COLORS.node[type] ?? COLORS.node.Default;
+    return (COLORS.node && COLORS.node[type]) ? COLORS.node[type] : COLORS.node.Default;
 }
 
 function formatTimestamp(timestamp) {
@@ -81,23 +78,6 @@ function formatTimestamp(timestamp) {
         second: "2-digit",
         hour12: false,
     });
-}
-
-function stripeColor(eventType) {
-    if (eventType === "PROVIDES") return COLORS.rel.PROVIDES;
-    if (eventType === "REQUIRES") return COLORS.rel.REQUIRES;
-    if (eventType === "COMMUNICATES_WITH") return COLORS.rel.COMMUNICATES_WITH;
-    if (eventType === "PART_OF") return COLORS.rel.PART_OF;
-    return "rgba(239,68,68,0.9)";
-}
-
-function pickTraceId(messages, wantedCapability) {
-    const arr = Array.isArray(messages) ? messages : [];
-    const withWanted = arr.filter((m) => (m?.capability || "").toLowerCase() === wantedCapability.toLowerCase());
-    const pickFrom = withWanted.length ? withWanted : arr;
-    const first = pickFrom[0];
-    const tid = first?.traceId;
-    return tid && String(tid).trim() !== "" ? String(tid) : "";
 }
 
 function buildTreeLayout(nodes, edges, showMessageNodes) {
@@ -125,9 +105,9 @@ function buildTreeLayout(nodes, edges, showMessageNodes) {
 
     const traceNode = baseNodes.find((n) => n.type === "Trace");
     let rootId =
-        traceNode?.id ||
-        baseNodes.find((n) => (indeg.get(n.id) || 0) === 0)?.id ||
-        baseNodes[0]?.id ||
+        (traceNode && traceNode.id) ||
+        (baseNodes.find((n) => (indeg.get(n.id) || 0) === 0) || {}).id ||
+        (baseNodes[0] || {}).id ||
         null;
 
     if (!rootId) return { nodes: [], width: "100%", height: "100%" };
@@ -213,11 +193,10 @@ function buildTreeLayout(nodes, edges, showMessageNodes) {
 }
 
 function GraphPanel({
-                        title,
                         traceId,
                         setTraceId,
+                        traceLabel,
                         graph,
-                        derived,
                         showMessageNodes,
                         updateXarrow,
                         loading,
@@ -227,28 +206,57 @@ function GraphPanel({
         [graph.nodes, graph.edges, showMessageNodes]
     );
 
+    const viewportRef = useRef(null);
+    const [scale, setScale] = useState(1);
+
+    useLayoutEffect(() => {
+        const el = viewportRef.current;
+        if (!el) return;
+
+        const getPx = (v) => {
+            if (!v) return 0;
+            const n = typeof v === "number" ? v : parseFloat(String(v).replace("px", ""));
+            return Number.isFinite(n) ? n : 0;
+        };
+
+        const updateScale = () => {
+            const cw = el.clientWidth || 1;
+            const lw = getPx(layout.width) || 1;
+            const maxW = Math.max(1, cw - 24);
+            const s = Math.min(1, maxW / lw);
+            setScale(s);
+        };
+
+        updateScale();
+        const ro = new ResizeObserver(updateScale);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [layout.width]);
+
     useLayoutEffect(() => {
         const t = setTimeout(updateXarrow, 150);
         return () => clearTimeout(t);
-    }, [layout.nodes, graph.edges, updateXarrow]);
+    }, [layout.nodes, graph.edges, updateXarrow, scale]);
 
     return (
         <Card sx={{ bgcolor: "rgba(0,0,0,0.12)", border: `1px solid ${COLORS.border}`, borderRadius: 3, overflow: "hidden" }}>
             <CardContent sx={{ pb: 2 }}>
                 <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}>
-                    <Typography variant="h6" sx={{ fontWeight: 900, color: COLORS.textPrimary }}>
-                        {title}
-                    </Typography>
+                    <Stack spacing={0.25}>
+                        <Typography variant="h6" sx={{ fontWeight: 900, color: COLORS.textPrimary }}>
+                            {traceLabel || "Trace Graph"}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                            {traceId || "—"}
+                        </Typography>
+                    </Stack>
 
                     <Stack direction="row" alignItems="center" gap={1}>
-                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
-                            TraceId:
-                        </Typography>
                         <input
                             type="text"
                             value={traceId}
                             onChange={(e) => setTraceId(e.target.value)}
-                            placeholder="auto / optional"
+                            placeholder="trace id"
                             style={{
                                 padding: "4px 10px",
                                 borderRadius: 6,
@@ -271,177 +279,93 @@ function GraphPanel({
 
                 <Divider sx={{ my: 1.5, borderColor: COLORS.border }} />
 
-                <Box sx={{ width: "100%", height: 540, overflow: "auto", borderRadius: 2 }}>
-                    <Box sx={{ position: "relative", width: layout.width, height: layout.height, minHeight: 540 }}>
+                <Box
+                    ref={viewportRef}
+                    sx={{
+                        width: "100%",
+                        height: 540,
+                        overflowY: "auto",
+                        overflowX: "hidden",
+                        borderRadius: 2,
+                    }}
+                >
+                    <Box
+                        sx={{
+                            position: "relative",
+                            width: layout.width,
+                            height: layout.height,
+                            minHeight: 540,
+                            transform: `scale(${scale})`,
+                            transformOrigin: "top left",
+                        }}
+                    >
                         <Xwrapper>
-                            {layout.nodes.map((node) => {
-                                const provides = derived.provides[node.id] ?? [];
-                                const requires = derived.requires[node.id] ?? [];
-                                const comms = derived.comms[node.id] ?? [];
-                                const partOf = derived.partOf[node.id] ?? [];
-
-                                return (
-                                    <Card
-                                        id={node.id}
-                                        key={node.id}
-                                        sx={{
-                                            bgcolor: COLORS.cardPaper,
-                                            color: COLORS.textPrimary,
-                                            borderRadius: 3,
-                                            border: `1px solid ${COLORS.border}`,
-                                            boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
-                                            ...node.style,
-                                        }}
-                                    >
-                                        <CardContent sx={{ p: 2 }}>
-                                            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-                                                <Chip
-                                                    size="small"
-                                                    label={node.type}
-                                                    sx={{
-                                                        bgcolor: nodeAccent(node.type),
-                                                        color: COLORS.textPrimary,
-                                                        border: `1px solid ${COLORS.border}`,
-                                                        fontWeight: 800,
-                                                    }}
-                                                />
-                                                <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
-                                                    {node.id}
-                                                </Typography>
-                                            </Stack>
-
-                                            <Typography variant="h6" sx={{ mt: 1, lineHeight: 1.2 }}>
-                                                {node.label}
+                            {layout.nodes.map((node) => (
+                                <Card
+                                    id={node.id}
+                                    key={node.id}
+                                    sx={{
+                                        bgcolor: COLORS.cardPaper,
+                                        color: COLORS.textPrimary,
+                                        borderRadius: 3,
+                                        border: `1px solid ${COLORS.border}`,
+                                        boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
+                                        ...node.style,
+                                    }}
+                                >
+                                    <CardContent sx={{ p: 2 }}>
+                                        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                                            <Chip
+                                                size="small"
+                                                label={node.type}
+                                                sx={{
+                                                    bgcolor: nodeAccent(node.type),
+                                                    color: COLORS.textPrimary,
+                                                    border: `1px solid ${COLORS.border}`,
+                                                    fontWeight: 800,
+                                                }}
+                                            />
+                                            <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                                                {node.id}
                                             </Typography>
+                                        </Stack>
 
-                                            {partOf.length > 0 && (
-                                                <Typography variant="body2" sx={{ mt: 0.75, color: COLORS.textSecondary }}>
-                                                    Part of: <b>{partOf.join(", ")}</b>
-                                                </Typography>
-                                            )}
-
-                                            <Divider sx={{ my: 1.25, borderColor: COLORS.border }} />
-
-                                            {provides.length === 0 && requires.length === 0 && comms.length === 0 ? (
-                                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                                                    No relations yet.
-                                                </Typography>
-                                            ) : (
-                                                <Stack spacing={1}>
-                                                    {provides.length > 0 && (
-                                                        <Box>
-                                                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                                                                <Chip label="PROVIDES" size="small" sx={relChip("PROVIDES")} />
-                                                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                                                                    {provides.length} capability(s)
-                                                                </Typography>
-                                                            </Stack>
-                                                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                                                {provides.map((cap) => (
-                                                                    <Chip
-                                                                        key={cap}
-                                                                        label={cap}
-                                                                        size="small"
-                                                                        sx={{ bgcolor: COLORS.subtleBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.border}` }}
-                                                                    />
-                                                                ))}
-                                                            </Stack>
-                                                        </Box>
-                                                    )}
-
-                                                    {requires.length > 0 && (
-                                                        <Box>
-                                                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                                                                <Chip label="REQUIRES" size="small" sx={relChip("REQUIRES")} />
-                                                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                                                                    {requires.length} capability(s)
-                                                                </Typography>
-                                                            </Stack>
-                                                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                                                {requires.map((cap) => (
-                                                                    <Chip
-                                                                        key={cap}
-                                                                        label={cap}
-                                                                        size="small"
-                                                                        sx={{ bgcolor: COLORS.subtleBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.border}` }}
-                                                                    />
-                                                                ))}
-                                                            </Stack>
-                                                        </Box>
-                                                    )}
-
-                                                    {comms.length > 0 && (
-                                                        <Box>
-                                                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                                                                <Chip label="COMMUNICATES_WITH" size="small" sx={relChip("COMMUNICATES_WITH")} />
-                                                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                                                                    {comms.length} target(s)
-                                                                </Typography>
-                                                            </Stack>
-                                                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                                                {comms.map((t) => (
-                                                                    <Chip
-                                                                        key={t}
-                                                                        label={t}
-                                                                        size="small"
-                                                                        sx={{ bgcolor: COLORS.subtleBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.border}` }}
-                                                                    />
-                                                                ))}
-                                                            </Stack>
-                                                        </Box>
-                                                    )}
-                                                </Stack>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                );
-                            })}
+                                        <Typography variant="h6" sx={{ mt: 1, lineHeight: 1.2 }}>
+                                            {node.label}
+                                        </Typography>
+                                    </CardContent>
+                                </Card>
+                            ))}
 
                             {graph.edges
-                                .filter(
-                                    (e) => layout.nodes.some((n) => n.id === e.from) && layout.nodes.some((n) => n.id === e.to)
-                                )
-                                .map((edge, i) => {
-                                    const fromNode = layout.nodes.find((n) => n.id === edge.from);
-                                    const toNode = layout.nodes.find((n) => n.id === edge.to);
-                                    if (!fromNode || !toNode) return null;
-
-                                    const fromX = parseFloat(String(fromNode.style.left).replace("px", "")) || 0;
-                                    const toX = parseFloat(String(toNode.style.left).replace("px", "")) || 0;
-
-                                    const startAnchor = fromX <= toX ? "right" : "left";
-                                    const endAnchor = fromX <= toX ? "left" : "right";
-
-                                    return (
-                                        <Xarrow
-                                            key={`${edge.from}-${edge.to}-${edge.type}-${i}`}
-                                            start={edge.from}
-                                            end={edge.to}
-                                            color={COLORS.rel[edge.type] ?? COLORS.textSecondary}
-                                            strokeWidth={2}
-                                            headSize={5}
-                                            path="smooth"
-                                            startAnchor={startAnchor}
-                                            endAnchor={endAnchor}
-                                            dashness={edge.type === "COMMUNICATES_WITH" || edge.type === "PART_OF"}
-                                            labels={
-                                                <div
-                                                    style={{
-                                                        padding: "2px 8px",
-                                                        borderRadius: 999,
-                                                        background: "rgba(0,0,0,0.55)",
-                                                        border: `1px solid ${COLORS.border}`,
-                                                        color: COLORS.textPrimary,
-                                                        fontSize: 12,
-                                                        fontWeight: 800,
-                                                    }}
-                                                >
-                                                    {edge.type}
-                                                </div>
-                                            }
-                                        />
-                                    );
-                                })}
+                                .filter((e) => layout.nodes.some((n) => n.id === e.from) && layout.nodes.some((n) => n.id === e.to))
+                                .map((edge, i) => (
+                                    <Xarrow
+                                        key={`${edge.from}-${edge.to}-${edge.type}-${i}`}
+                                        start={edge.from}
+                                        end={edge.to}
+                                        color={(COLORS.rel && COLORS.rel[edge.type]) ? COLORS.rel[edge.type] : COLORS.textSecondary}
+                                        strokeWidth={2}
+                                        headSize={5}
+                                        path="smooth"
+                                        dashness={edge.type === "COMMUNICATES_WITH" || edge.type === "PART_OF"}
+                                        labels={
+                                            <div
+                                                style={{
+                                                    padding: "2px 8px",
+                                                    borderRadius: 999,
+                                                    background: "rgba(0,0,0,0.55)",
+                                                    border: `1px solid ${COLORS.border}`,
+                                                    color: COLORS.textPrimary,
+                                                    fontSize: 12,
+                                                    fontWeight: 800,
+                                                }}
+                                            >
+                                                {edge.type}
+                                            </div>
+                                        }
+                                    />
+                                ))}
                         </Xwrapper>
                     </Box>
                 </Box>
@@ -451,54 +375,88 @@ function GraphPanel({
 }
 
 export default function App() {
-    const [view, setView] = useState("graph");
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [msgError, setMsgError] = useState(null);
-    const [messages, setMessages] = useState([]);
+
     const [autoRefresh, setAutoRefresh] = useState(true);
-    const [loginTraceId, setLoginTraceId] = useState("");
-    const [productTraceId, setProductTraceId] = useState("");
-    const [loginGraph, setLoginGraph] = useState({ nodes: [], edges: [] });
-    const [productGraph, setProductGraph] = useState({ nodes: [], edges: [] });
     const [showMessageNodes, setShowMessageNodes] = useState(false);
+
+    const [traces, setTraces] = useState([]);
+    const [selectedTraceId, setSelectedTraceId] = useState("");
+    const [liveNewestTrace, setLiveNewestTrace] = useState(true);
+
+    const [graph, setGraph] = useState({ nodes: [], edges: [] });
+    const [traceLabelById, setTraceLabelById] = useState({});
 
     const updateXarrow = useXarrow();
 
-    const loadMessages = async () => {
-        try {
-            setMsgError(null);
-            const res = await fetch("/api/blackboard/messages?limit=200"); // load more so we can auto-pick traceIds
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-            const arr = Array.isArray(data) ? data : [];
-            setMessages(arr);
-            setLoginTraceId((prev) => (prev && prev.trim() ? prev : pickTraceId(arr, "Authentication")));
-            setProductTraceId((prev) => (prev && prev.trim() ? prev : pickTraceId(arr, "ProductList")));
-        } catch (e) {
-            setMsgError(String(e?.message ?? e));
-        }
+    const deriveLabelFromGraph = (g) => {
+        const nodes = Array.isArray(g?.nodes) ? g.nodes : [];
+        const ui = nodes.find((n) => n?.type === "UIComponent" && n?.label);
+        const raw = ui?.label ? String(ui.label) : "Unknown Trace";
+        return raw.replace(".vue", "");
     };
 
-    const loadGraphFor = async (traceId, setter) => {
-        let url = "/api/blackboard/graph";
-        if (traceId && traceId.trim() !== "") url += "?traceId=" + encodeURIComponent(traceId.trim());
+    const loadGraph = async (traceId) => {
+        if (!traceId || String(traceId).trim() === "") {
+            setGraph({ nodes: [], edges: [] });
+            return;
+        }
+        const url = "/api/blackboard/graph?traceId=" + encodeURIComponent(String(traceId).trim());
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
-        const edges = Array.isArray(data?.edges) ? data.edges : [];
-        setter({ nodes, edges });
+        setGraph({
+            nodes: Array.isArray(data?.nodes) ? data.nodes : [],
+            edges: Array.isArray(data?.edges) ? data.edges : [],
+        });
     };
 
-    const loadBothGraphs = async () => {
+    const loadTracesAndLabels = async () => {
+        const res = await fetch("/api/blackboard/traces");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const arr = Array.isArray(data) ? data : [];
+        setTraces(arr);
+
+        if (arr.length > 0) {
+            setSelectedTraceId((prev) => {
+                if (liveNewestTrace) return String(arr[0].id);
+                return prev && String(prev).trim() !== "" ? prev : String(arr[0].id);
+            });
+        }
+
+        const existing = traceLabelById || {};
+        const need = arr.map((t) => String(t.id)).filter((tid) => tid && !existing[tid]);
+        if (need.length === 0) return;
+
+        const CONCURRENCY = 6;
+        const queue = [...need];
+        const nextLabels = { ...existing };
+
+        const worker = async () => {
+            while (queue.length) {
+                const tid = queue.shift();
+                try {
+                    const r = await fetch("/api/blackboard/graph?traceId=" + encodeURIComponent(tid));
+                    if (!r.ok) throw new Error(`graph ${tid} -> HTTP ${r.status}`);
+                    const g = await r.json();
+                    nextLabels[tid] = deriveLabelFromGraph(g);
+                } catch {
+                    nextLabels[tid] = "Unknown Trace";
+                }
+            }
+        };
+
+        await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
+        setTraceLabelById(nextLabels);
+    };
+
+    const reloadAll = async () => {
         try {
             setLoading(true);
             setError(null);
-            await Promise.all([
-                loadGraphFor(loginTraceId, setLoginGraph),
-                loadGraphFor(productTraceId, setProductGraph),
-            ]);
+            await loadTracesAndLabels();
         } catch (e) {
             setError(String(e?.message ?? e));
         } finally {
@@ -507,195 +465,40 @@ export default function App() {
     };
 
     useEffect(() => {
-        loadMessages();
+        reloadAll();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
-        loadBothGraphs();
-    }, [loginTraceId, productTraceId]);
+        (async () => {
+            try {
+                setLoading(true);
+                setError(null);
+                await loadGraph(selectedTraceId);
+            } catch (e) {
+                setError(String(e?.message ?? e));
+            } finally {
+                setLoading(false);
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedTraceId]);
 
     useEffect(() => {
         if (!autoRefresh) return;
-        const interval = setInterval(() => {
-            loadMessages();
-            loadBothGraphs();
+        const interval = setInterval(async () => {
+            try {
+                await loadTracesAndLabels();
+                if (!liveNewestTrace) await loadGraph(selectedTraceId);
+            } catch {
+                // ignore
+            }
         }, 2000);
         return () => clearInterval(interval);
-    }, [autoRefresh, loginTraceId, productTraceId]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoRefresh, selectedTraceId, liveNewestTrace]);
 
-    const makeDerived = (graph) =>
-        useMemo(() => {
-            const byId = new Map();
-            graph.nodes.forEach((n) => byId.set(n.id, n));
-
-            const provides = new Map();
-            const requires = new Map();
-            const comms = new Map();
-            const partOf = new Map();
-
-            const add = (map, key, value) => {
-                if (!map.has(key)) map.set(key, new Set());
-                map.get(key).add(value);
-            };
-
-            for (const e of graph.edges) {
-                const from = byId.get(e.from);
-                const to = byId.get(e.to);
-                if (!from || !to) continue;
-
-                if (e.type === "PROVIDES") add(provides, e.from, to.label);
-                if (e.type === "REQUIRES") add(requires, e.from, to.label);
-                if (e.type === "COMMUNICATES_WITH") add(comms, e.from, to.label);
-                if (e.type === "PART_OF") add(partOf, e.from, to.label);
-            }
-
-            const toArrMap = (m) =>
-                Object.fromEntries(Array.from(m.entries()).map(([k, v]) => [k, Array.from(v)]));
-
-            return {
-                byId,
-                provides: toArrMap(provides),
-                requires: toArrMap(requires),
-                comms: toArrMap(comms),
-                partOf: toArrMap(partOf),
-            };
-        }, [graph]);
-
-    const loginDerived = makeDerived(loginGraph);
-    const productDerived = makeDerived(productGraph);
-
-    const legend = (
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Chip label="REQUIRES" size="small" sx={relChip("REQUIRES")} />
-            <Chip label="PROVIDES" size="small" sx={relChip("PROVIDES")} />
-            <Chip label="COMMUNICATES_WITH" size="small" sx={relChip("COMMUNICATES_WITH")} />
-            <Chip label="PART_OF" size="small" sx={relChip("PART_OF")} />
-        </Stack>
-    );
-
-    const GraphsView = () => (
-        <Stack spacing={2} sx={{ height: "100%", overflow: "auto" }}>
-            <GraphPanel
-                title="Login Trace (Authentication)"
-                traceId={loginTraceId}
-                setTraceId={setLoginTraceId}
-                graph={loginGraph}
-                derived={loginDerived}
-                showMessageNodes={showMessageNodes}
-                updateXarrow={updateXarrow}
-                loading={loading}
-            />
-            <GraphPanel
-                title="ProductList Trace (ProductList + Auth check)"
-                traceId={productTraceId}
-                setTraceId={setProductTraceId}
-                graph={productGraph}
-                derived={productDerived}
-                showMessageNodes={showMessageNodes}
-                updateXarrow={updateXarrow}
-                loading={loading}
-            />
-        </Stack>
-    );
-
-    const MessagesView = () => (
-        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, overflowY: "auto", height: "100%" }}>
-            {msgError && (
-                <Alert severity="error" sx={{ width: "100%", borderRadius: 2 }}>
-                    {msgError}
-                </Alert>
-            )}
-
-            {messages.map((m, idx) => {
-                const key = m.id ?? `${m.sender}-${m.timestamp}-${idx}`;
-                return (
-                    <Card
-                        key={key}
-                        sx={{
-                            width: 320,
-                            bgcolor: COLORS.cardPaper,
-                            borderRadius: 3,
-                            border: `1px solid ${COLORS.border}`,
-                            boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
-                            display: "flex",
-                            color: COLORS.textPrimary,
-                            flexShrink: 0,
-                            overflow: "hidden",
-                        }}
-                    >
-                        <Box sx={{ width: 6, bgcolor: stripeColor(m.eventType) }} />
-                        <CardContent sx={{ flex: 1 }}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
-                                    {m.id ?? "—"}
-                                </Typography>
-                                <Chip label={m.eventType ?? "—"} size="small" sx={relChip(m.eventType)} />
-                            </Stack>
-
-                            <Typography variant="h6" sx={{ mt: 1, lineHeight: 1.2 }}>
-                                {m.capability ?? "—"}
-                            </Typography>
-
-                            <Typography variant="body2" sx={{ mt: 1, color: COLORS.textSecondary }}>
-                                👤 <b>{m.sender ?? "—"}</b>
-                                {m.receiver ? (
-                                    <>
-                                        {" "}
-                                        → <b>{m.receiver}</b>
-                                    </>
-                                ) : null}
-                            </Typography>
-
-                            <Typography variant="body2" sx={{ mt: 0.75, color: COLORS.textSecondary }}>
-                                Trace: <b>{m.traceId ?? "—"}</b>
-                            </Typography>
-
-                            {m.payload && String(m.payload).trim() !== "" && (
-                                <pre
-                                    style={{
-                                        fontSize: "0.78rem",
-                                        background: COLORS.subtleBg,
-                                        padding: 10,
-                                        borderRadius: 10,
-                                        marginTop: 10,
-                                        whiteSpace: "pre-wrap",
-                                        color: COLORS.textPrimary,
-                                        wordBreak: "break-word",
-                                        border: `1px solid ${COLORS.border}`,
-                                    }}
-                                >
-                  {String(m.payload)}
-                </pre>
-                            )}
-
-                            <Typography variant="caption" sx={{ color: COLORS.textSecondary, mt: 1, display: "block" }}>
-                                Timestamp: {formatTimestamp(m.timestamp)}
-                            </Typography>
-                        </CardContent>
-                    </Card>
-                );
-            })}
-
-            {messages.length === 0 && !msgError && (
-                <Typography sx={{ opacity: 0.7, color: COLORS.textSecondary }}>No messages available yet.</Typography>
-            )}
-        </Box>
-    );
-
-    const RelationsView = () => (
-        <Box sx={{ height: "100%", overflow: "auto" }}>
-            <Stack spacing={2}>
-                <Card sx={{ bgcolor: COLORS.cardPaper, border: `1px solid ${COLORS.border}`, borderRadius: 3 }}>
-                    <CardContent>
-                        <Typography variant="h6">Info</Typography>
-                        <Typography variant="body2" sx={{ color: COLORS.textSecondary, mt: 0.5 }}>
-                            Zwei getrennte Graphen anhand von TraceIds. Du kannst die TraceIds oben pro Panel überschreiben.
-                        </Typography>
-                    </CardContent>
-                </Card>
-            </Stack>
-        </Box>
-    );
+    const selectedLabel = selectedTraceId ? (traceLabelById[String(selectedTraceId)] || "Trace Graph") : "Trace Graph";
 
     return (
         <Box
@@ -706,6 +509,7 @@ export default function App() {
                 minHeight: "100vh",
                 display: "flex",
                 flexDirection: "column",
+                overflowX: "hidden",
             }}
         >
             <AppBar position="static" sx={{ backgroundColor: COLORS.primary, boxShadow: "0 1px 10px rgba(0,0,0,0.6)" }}>
@@ -721,17 +525,12 @@ export default function App() {
                             control={<Switch checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} size="small" />}
                             label={<Typography variant="body2" sx={{ color: COLORS.chipText }}>Auto Refresh</Typography>}
                         />
-
                         <FormControlLabel
                             control={<Switch checked={showMessageNodes} onChange={(e) => setShowMessageNodes(e.target.checked)} size="small" />}
                             label={<Typography variant="body2" sx={{ color: COLORS.chipText }}>Show Message Nodes</Typography>}
                         />
-
                         <Button
-                            onClick={() => {
-                                loadMessages();
-                                loadBothGraphs();
-                            }}
+                            onClick={reloadAll}
                             startIcon={<RefreshIcon />}
                             variant="contained"
                             disabled={loading}
@@ -749,30 +548,6 @@ export default function App() {
                 </Toolbar>
             </AppBar>
 
-            <Box sx={{ px: 2, pt: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
-                {legend}
-                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                    Messages: <b>{messages.length}</b>
-                </Typography>
-            </Box>
-
-            <Tabs
-                value={view}
-                onChange={(e, v) => setView(v)}
-                sx={{
-                    borderBottom: `1px solid ${COLORS.border}`,
-                    px: 2,
-                    mt: 1,
-                    "& .MuiTab-root": { color: COLORS.textSecondary, fontWeight: 800 },
-                    "& .Mui-selected": { color: COLORS.textPrimary },
-                    "& .MuiTabs-indicator": { backgroundColor: COLORS.primary },
-                }}
-            >
-                <Tab label="Graphs" value="graph" />
-                <Tab label="Messages" value="messages" />
-                <Tab label="Info" value="relations" />
-            </Tabs>
-
             <Box sx={{ p: 2, flexGrow: 1, overflow: "hidden" }}>
                 {error && (
                     <Alert
@@ -789,9 +564,66 @@ export default function App() {
                     </Alert>
                 )}
 
-                {view === "graph" && <GraphsView />}
-                {view === "messages" && <MessagesView />}
-                {view === "relations" && <RelationsView />}
+                <Box sx={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 2, height: "100%" }}>
+                    <Card sx={{ bgcolor: COLORS.cardPaper, border: `1px solid ${COLORS.border}`, borderRadius: 3, overflow: "hidden" }}>
+                        <CardContent>
+                            <Stack direction="row" alignItems="center" justifyContent="space-between">
+                                <Typography variant="h6" sx={{ fontWeight: 900, color: COLORS.textPrimary }}>
+                                    Traces
+                                </Typography>
+                                <FormControlLabel
+                                    control={<Switch checked={liveNewestTrace} onChange={(e) => setLiveNewestTrace(e.target.checked)} size="small" />}
+                                    label={<Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Live newest</Typography>}
+                                />
+                            </Stack>
+
+                            <Divider sx={{ my: 1.5, borderColor: COLORS.border }} />
+
+                            <List dense sx={{ maxHeight: 560, overflow: "auto" }}>
+                                {traces.map((t) => {
+                                    const tid = String(t.id);
+                                    const label = traceLabelById[tid] || tid;
+                                    return (
+                                        <ListItem
+                                            key={tid}
+                                            onClick={() => {
+                                                setLiveNewestTrace(false);
+                                                setSelectedTraceId(tid);
+                                            }}
+                                            sx={{
+                                                borderRadius: 2,
+                                                mb: 0.5,
+                                                border: `1px solid ${COLORS.border}`,
+                                                cursor: "pointer",
+                                                bgcolor: String(selectedTraceId) === tid ? "rgba(124,58,237,0.18)" : COLORS.subtleBg,
+                                            }}
+                                        >
+                                            <ListItemText
+                                                primary={<Typography sx={{ fontWeight: 900, color: COLORS.textPrimary }}>{label}</Typography>}
+                                                secondary={<Typography variant="caption" sx={{ color: COLORS.textSecondary }}>{formatTimestamp(t.startedAt)}</Typography>}
+                                            />
+                                        </ListItem>
+                                    );
+                                })}
+
+                                {traces.length === 0 && <Typography sx={{ color: COLORS.textSecondary, mt: 1 }}>No traces yet.</Typography>}
+                            </List>
+                        </CardContent>
+                    </Card>
+
+                    <GraphPanel
+                        traceId={selectedTraceId}
+                        setTraceId={(val) => {
+                            setLiveNewestTrace(false);
+                            setSelectedTraceId(val);
+                        }}
+                        traceLabel={selectedLabel}
+                        graph={graph}
+                        showMessageNodes={showMessageNodes}
+                        updateXarrow={updateXarrow}
+                        loading={loading}
+                    />
+                </Box>
             </Box>
         </Box>
     );

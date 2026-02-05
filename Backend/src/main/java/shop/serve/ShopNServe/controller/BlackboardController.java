@@ -26,10 +26,22 @@ public class BlackboardController {
             @RequestBody MessageEventRequest event,
             @RequestHeader(value = "Authorization", required = false) String authHeader
     ) {
-        BlackboardResponse resp = blackboardService.handle(event, authHeader);
-        return resp.ok()
-                ? ResponseEntity.ok(resp)
-                : ResponseEntity.status(401).body(resp);
+        try {
+            BlackboardResponse resp = blackboardService.handle(event, authHeader);
+            return resp.ok() ? ResponseEntity.ok(resp) : ResponseEntity.status(401).body(resp);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(new BlackboardResponse(false, Map.of(
+                    "error", "Internal Server Error: " + e.getClass().getSimpleName(),
+                    "message", String.valueOf(e.getMessage()),
+                    "traceId", event != null ? event.traceIdOrNull() : null
+            )));
+        }
+    }
+
+    @GetMapping("/traces")
+    public ResponseEntity<?> getTraces(@RequestParam(defaultValue = "50") int limit) {
+        return ResponseEntity.ok(queryService.getTraces(limit));
     }
 
     @GetMapping("/graph")

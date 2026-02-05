@@ -12,86 +12,117 @@ import java.util.UUID;
 public class GraphService {
 
     private final Neo4jClient neo4j;
+    private final SessionGraphIngestService sessionGraphIngestService;
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    public GraphService(Neo4jClient neo4j) {
+    public GraphService(Neo4jClient neo4j, SessionGraphIngestService sessionGraphIngestService) {
         this.neo4j = neo4j;
+        this.sessionGraphIngestService = sessionGraphIngestService;
     }
-
-    public void storeRequires(String uiComponent, String capability) {
-        neo4j.query("""
-            MERGE (u:UIComponent {name: $ui})
-            MERGE (c:Capability {name: $cap})
-            MERGE (u)-[:REQUIRES]->(c)
-        """).bindAll(Map.of("ui", uiComponent, "cap", capability)).run();
-    }
-
-    public void storeProvides(String backendComponent, String capability) {
-        neo4j.query("""
-            MERGE (b:BackendComponent {name: $backend})
-            MERGE (c:Capability {name: $cap})
-            MERGE (b)-[:PROVIDES]->(c)
-        """).bindAll(Map.of("backend", backendComponent, "cap", capability)).run();
-    }
-
-    public void storeCommunicatesWith(String uiComponent, String backendComponent) {
-        neo4j.query("""
-            MERGE (u:UIComponent {name: $ui})
-            MERGE (b:BackendComponent {name: $backend})
-            MERGE (u)-[:COMMUNICATES_WITH]->(b)
-        """).bindAll(Map.of("ui", uiComponent, "backend", backendComponent)).run();
-    }
-
-    public void storeUiBelongsToApp(String uiComponent, String appName) {
-        neo4j.query("""
-            MERGE (u:UIComponent {name: $ui})
-            MERGE (m:MicroClient {name: $app})
-            MERGE (u)-[:PART_OF]->(m)
-        """).bindAll(Map.of("ui", uiComponent, "app", appName)).run();
-    }
-
-    public String storeMessageEvent(String senderUiComponent,
-                                    String eventType,
-                                    String capability,
-                                    Object payload) {
-        return storeMessageEvent(senderUiComponent, eventType, capability, payload, null);
-    }
-
-    public String storeMessageEvent(String senderUiComponent,
-                                    String receiverBackendComponent,
-                                    String eventType,
-                                    String capability,
-                                    Object payload) {
-        return storeMessageEvent(senderUiComponent, receiverBackendComponent, eventType, capability, payload, null);
-    }
-
-    public String storeMessageEvent(String senderUiComponent,
-                                    String eventType,
-                                    String capability,
-                                    Object payload,
-                                    String traceIdOrNull) {
-
-        String id = UUID.randomUUID().toString();
-        String usedTraceId = (traceIdOrNull == null || traceIdOrNull.isBlank())
+    private String ensureTraceId(String traceIdOrNull) {
+        return (traceIdOrNull == null || traceIdOrNull.isBlank())
                 ? UUID.randomUUID().toString()
                 : traceIdOrNull;
+    }
 
-        String payloadStr = null;
+    private void ensureTraceNode(String traceId) {
+        String now = Instant.now().toString();
+        neo4j.query("""
+            MERGE (t:Trace {id: $traceId})
+            ON CREATE SET t.startedAt = datetime($now)
+        """).bindAll(Map.of("traceId", traceId, "now", now)).run();
+    }
+
+    public void storeRequires(String traceIdOrNull, String uiComponent, String capability) {
+        String traceId = ensureTraceId(traceIdOrNull);
+        ensureTraceNode(traceId);
+
+        neo4j.query("""
+            MATCH (t:Trace {id: $traceId})
+            MERGE (u:UIComponent {traceId: $traceId, name: $ui})
+            MERGE (c:Capability  {traceId: $traceId, name: $cap})
+            MERGE (t)-[:HAS_NODE]->(u)
+            MERGE (t)-[:HAS_NODE]->(c)
+            MERGE (u)-[:REQUIRES]->(c)
+        """).bindAll(Map.of("traceId", traceId, "ui", uiComponent, "cap", capability)).run();
+    }
+
+    public void storeProvides(String traceIdOrNull, String backendComponent, String capability) {
+        String traceId = ensureTraceId(traceIdOrNull);
+        ensureTraceNode(traceId);
+
+        neo4j.query("""
+            MATCH (t:Trace {id: $traceId})
+            MERGE (b:BackendComponent {traceId: $traceId, name: $backend})
+            MERGE (c:Capability       {traceId: $traceId, name: $cap})
+            MERGE (t)-[:HAS_NODE]->(b)
+            MERGE (t)-[:HAS_NODE]->(c)
+            MERGE (b)-[:PROVIDES]->(c)
+        """).bindAll(Map.of("traceId", traceId, "backend", backendComponent, "cap", capability)).run();
+    }
+
+    public void storeCommunicatesWith(String traceIdOrNull, String uiComponent, String backendComponent) {
+        String traceId = ensureTraceId(traceIdOrNull);
+        ensureTraceNode(traceId);
+
+        neo4j.query("""
+            MATCH (t:Trace {id: $traceId})
+            MERGE (u:UIComponent      {traceId: $traceId, name: $ui})
+            MERGE (b:BackendComponent {traceId: $traceId, name: $backend})
+            MERGE (t)-[:HAS_NODE]->(u)
+            MERGE (t)-[:HAS_NODE]->(b)
+            MERGE (u)-[:COMMUNICATES_WITH]->(b)
+        """).bindAll(Map.of("traceId", traceId, "ui", uiComponent, "backend", backendComponent)).run();
+    }
+
+    public void storeUiBelongsToApp(String traceIdOrNull, String uiComponent, String appName) {
+        String traceId = ensureTraceId(traceIdOrNull);
+        ensureTraceNode(traceId);
+
+        neo4j.query("""
+            MATCH (t:Trace {id: $traceId})
+            MERGE (u:UIComponent {traceId: $traceId, name: $ui})
+            MERGE (m:MicroClient {traceId: $traceId, name: $app})
+            MERGE (t)-[:HAS_NODE]->(u)
+            MERGE (t)-[:HAS_NODE]->(m)
+            MERGE (u)-[:PART_OF]->(m)
+        """).bindAll(Map.of("traceId", traceId, "ui", uiComponent, "app", appName)).run();
+    }
+
+    /**
+     * Speichert das alte Modell (Trace/MessageEvent etc)
+     * UND schreibt parallel das neue Session/Step/RequestEvent Modell via SessionGraphIngestService.
+     */
+    public String storeMessageEvent(
+            String senderUiComponent,
+            String receiverBackendComponent,
+            String eventType,
+            String capability,
+            Object payload,
+            String traceIdOrNull
+    ) {
+        String traceId = ensureTraceId(traceIdOrNull);
+        ensureTraceNode(traceId);
+
+        String eventId = UUID.randomUUID().toString();
+        String now = Instant.now().toString();
+
+        String payloadStr;
         try {
-            if (payload != null) payloadStr = MAPPER.writeValueAsString(payload);
+            payloadStr = (payload == null) ? null : MAPPER.writeValueAsString(payload);
         } catch (Exception e) {
             payloadStr = String.valueOf(payload);
         }
 
-        String now = Instant.now().toString();
-
         neo4j.query("""
-            MERGE (t:Trace {id: $traceId})
-              ON CREATE SET t.startedAt = datetime($now)
-            MERGE (u:UIComponent {name: $sender})
-            MERGE (c:Capability {name: $capability})
+            MATCH (t:Trace {id: $traceId})
+            MERGE (u:UIComponent {traceId: $traceId, name: $sender})
+            MERGE (c:Capability  {traceId: $traceId, name: $capability})
+            MERGE (t)-[:HAS_NODE]->(u)
+            MERGE (t)-[:HAS_NODE]->(c)
             CREATE (e:MessageEvent {
-              id: $id,
+              id: $eventId,
               traceId: $traceId,
               eventType: $eventType,
               capability: $capability,
@@ -102,46 +133,34 @@ public class GraphService {
             MERGE (u)-[:SENDS]->(e)
             MERGE (e)-[:ABOUT]->(c)
         """).bindAll(Map.of(
+                "traceId", traceId,
                 "sender", senderUiComponent,
-                "id", id,
-                "traceId", usedTraceId,
-                "eventType", eventType,
                 "capability", capability,
+                "eventId", eventId,
+                "eventType", eventType,
                 "payload", payloadStr,
                 "now", now
         )).run();
 
-        return usedTraceId;
-    }
-
-    public String storeMessageEvent(String senderUiComponent,
-                                    String receiverBackendComponent,
-                                    String eventType,
-                                    String capability,
-                                    Object payload,
-                                    String traceIdOrNull) {
-
-        String usedTraceId = storeMessageEvent(senderUiComponent, eventType, capability, payload, traceIdOrNull);
-
         if (receiverBackendComponent != null && !receiverBackendComponent.isBlank()) {
-            linkHandledByLatest(senderUiComponent, usedTraceId, receiverBackendComponent, capability);
-            storeCommunicatesWith(senderUiComponent, receiverBackendComponent);
-        }
-        return usedTraceId;
-    }
+            neo4j.query("""
+                MATCH (t:Trace {id: $traceId})-[:HAS_EVENT]->(e:MessageEvent {id: $eventId})
+                MERGE (b:BackendComponent {traceId: $traceId, name: $backend})
+                MERGE (t)-[:HAS_NODE]->(b)
+                MERGE (e)-[:HANDLED_BY]->(b)
+            """).bindAll(Map.of(
+                    "traceId", traceId,
+                    "eventId", eventId,
+                    "backend", receiverBackendComponent
+            )).run();
 
-    private void linkHandledByLatest(String sender, String traceId, String backend, String capability) {
-        neo4j.query("""
-            MATCH (t:Trace {id: $traceId})-[:HAS_EVENT]->(e:MessageEvent {capability: $capability})
-            MATCH (u:UIComponent {name: $sender})-[:SENDS]->(e)
-            WITH e ORDER BY e.timestamp DESC LIMIT 1
-            MERGE (b:BackendComponent {name: $backend})
-            MERGE (e)-[:HANDLED_BY]->(b)
-        """).bindAll(Map.of(
-                "traceId", traceId,
-                "sender", sender,
-                "backend", backend,
-                "capability", capability
-        )).run();
+            storeCommunicatesWith(traceId, senderUiComponent, receiverBackendComponent);
+        }
+
+        try {
+        } catch (Exception ignored) {
+        }
+
+        return traceId;
     }
 }

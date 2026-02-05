@@ -8,6 +8,7 @@ import shop.serve.ShopNServe.service.GraphService;
 import shop.serve.ShopNServe.service.ProductCatalogService;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class ProductlistHandler implements CapabilityHandler {
@@ -27,23 +28,28 @@ public class ProductlistHandler implements CapabilityHandler {
 
     @Override
     public BlackboardResponse handle(MessageEventRequest event) {
+        String traceId = event.traceIdOrNull();
+        String usedTraceId = (traceId == null || traceId.isBlank())
+                ? UUID.randomUUID().toString()
+                : traceId;
+
         var products = catalogService.getProducts();
 
-        graphService.storeProvides("ProductService", Capability.ProductList.name());
-        graphService.storeCommunicatesWith(event.sender().component(), "ProductService");
+        graphService.storeProvides(usedTraceId, "ProductService", Capability.ProductList.name());
+        graphService.storeCommunicatesWith(usedTraceId, event.sender().component(), "ProductService");
 
-        String usedTraceId = graphService.storeMessageEvent(
+        String storedTraceId = graphService.storeMessageEvent(
                 event.sender().component(),
                 "ProductService",
                 "PROVIDES",
                 Capability.ProductList.name(),
                 Map.of("action", "listProducts"),
-                event.traceIdOrNull()
+                usedTraceId
         );
 
         return new BlackboardResponse(true, Map.of(
                 "productList", products,
-                "traceId", usedTraceId
+                "traceId", storedTraceId
         ));
     }
 }
