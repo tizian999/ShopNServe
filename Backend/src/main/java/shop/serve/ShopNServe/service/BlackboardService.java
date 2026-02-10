@@ -31,44 +31,55 @@ public class BlackboardService {
     }
 
     public BlackboardResponse handle(MessageEventRequest event, String authHeader) {
+
         if (event == null) return error("Missing body", null);
 
-        if (event.capabilities() == null || event.capabilities().isEmpty()) {
+        if (event.capabilities() == null || event.capabilities().isEmpty())
             return error("capabilities required", event.traceIdOrNull());
-        }
 
-        if (event.sender() == null || event.sender().component() == null || event.sender().component().isBlank()) {
+        if (event.sender() == null || event.sender().component() == null || event.sender().component().isBlank())
             return error("sender.component required", event.traceIdOrNull());
-        }
 
         boolean isAuthRequest = event.capabilities().contains(Capability.Authentication);
         if (!isAuthRequest && !authService.validate(authHeader)) {
             return unauthorized(event.traceIdOrNull());
         }
-        String sessionId = sessionGraph.ensureSession(event.traceIdOrNull());
+        String sessionId = sessionGraph.ensureSessionAndUi(event);
+
+        String uiName = event.sender().component().replace(".vue", "");
+        if (uiName.isBlank()) uiName = "unknown";
 
         BlackboardResponse last = null;
         for (Capability cap : event.capabilities()) {
 
             CapabilityHandler h = handlers.get(cap);
             if (h == null) {
-                String stepId = sessionGraph.ingestInvocation(sessionId, event, cap, Map.of(
-                        "error", "No handler for capability: " + cap.name()
-                ));
-                sessionGraph.setStepStatus(stepId, "failed", "No handler for capability: " + cap.name());
+                String reqId = sessionGraph.createRequestedData(
+                        sessionId,
+                        uiName,
+                        backendFor(cap),
+                        cap,
+                        event.payload()
+                );
+                sessionGraph.markRequestedFailed(reqId, "No handler for capability: " + cap.name());
                 return error("No handler for capability: " + cap.name(), sessionId);
             }
+            String requestedId = sessionGraph.createRequestedData(
+                    sessionId,
+                    uiName,
+                    backendFor(cap),
+                    cap,
+                    event.payload()
+            );
 
             BlackboardResponse handlerResp;
             try {
                 handlerResp = h.handle(event);
             } catch (Exception ex) {
-                String stepId = sessionGraph.ingestInvocation(sessionId, event, cap, Map.of(
-                        "error", ex.getClass().getSimpleName(),
-                        "message", String.valueOf(ex.getMessage())
-                ));
-                sessionGraph.setStepStatus(stepId, "failed", ex.getClass().getSimpleName() + ": " + ex.getMessage());
-
+                sessionGraph.markRequestedFailed(
+                        requestedId,
+                        ex.getClass().getSimpleName() + ": " + ex.getMessage()
+                );
                 return new BlackboardResponse(false, Map.of(
                         "error", "Handler exception for: " + cap.name(),
                         "message", String.valueOf(ex.getMessage()),
@@ -77,32 +88,42 @@ public class BlackboardService {
             }
 
             if (handlerResp == null) {
-                String stepId = sessionGraph.ingestInvocation(sessionId, event, cap, Map.of(
-                        "error", "Handler returned null for: " + cap.name()
-                ));
-                sessionGraph.setStepStatus(stepId, "failed", "Handler returned null for: " + cap.name());
+                sessionGraph.markRequestedFailed(requestedId, "Handler returned null for: " + cap.name());
                 return error("Handler returned null for: " + cap.name(), sessionId);
             }
 
             last = handlerResp;
-            String stepId = sessionGraph.ingestInvocation(sessionId, event, cap, handlerResp.data());
 
             if (handlerResp.ok()) {
-                sessionGraph.setStepStatus(stepId, "complete", null);
+                sessionGraph.markRequestedCompleted(requestedId);
             } else {
-                String err = null;
-                try {
-                    Object o = handlerResp.data() != null ? handlerResp.data().get("error") : null;
-                    err = o != null ? String.valueOf(o) : "Unknown error";
-                } catch (Exception ignored) {
-                    err = "Unknown error";
-                }
-                sessionGraph.setStepStatus(stepId, "failed", err);
+                sessionGraph.markRequestedFailed(requestedId, extractError(handlerResp));
                 return handlerResp;
             }
+
+            String providedId = sessionGraph.createProvidedData(cap, handlerResp.data());
+            sessionGraph.markProvidedCompleted(providedId);
         }
 
         return last != null ? last : new BlackboardResponse(true, Map.of("traceId", sessionId));
+    }
+
+    private String backendFor(Capability cap) {
+        if (cap == null) return "UnknownService";
+        return switch (cap) {
+            case Authentication, Authorization -> "AuthService";
+            case ProductList, OrderPlaced -> "ProductListService";
+            default -> cap.name() + "Service";
+        };
+    }
+
+    private String extractError(BlackboardResponse resp) {
+        try {
+            Object o = resp.data() != null ? resp.data().get("error") : null;
+            return o != null ? String.valueOf(o) : "Unknown error";
+        } catch (Exception e) {
+            return "Unknown error";
+        }
     }
 
     private BlackboardResponse error(String msg, String traceId) {
