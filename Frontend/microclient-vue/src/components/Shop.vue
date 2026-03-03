@@ -1,206 +1,192 @@
 <template>
   <v-app theme="dark">
-    <v-container class="py-8">
-      <v-row justify="center">
-        <v-col cols="12" md="10" lg="8">
-          <header class="text-center mb-8">
-            <h1 class="text-h3 font-weight-bold text-purple-accent-1">ShopNServe</h1>
-            <p class="text-medium-emphasis">Your favorite snacks and drinks, delivered fast</p>
-          </header>
+    <v-container fluid class="py-6 px-6">
+      <header class="d-flex align-center justify-space-between mb-6">
+        <div>
+          <h1 class="text-h3 font-weight-bold text-purple-accent-1">ShopNServe</h1>
+          <p class="text-medium-emphasis">Your favorite snacks and drinks, delivered fast</p>
+        </div>
 
-          <v-card v-if="!user" class="pa-6 mx-auto" max-width="450" elevation="12" rounded="lg">
-            <v-card-title class="text-h5 text-center mb-4">Welcome!</v-card-title>
-            <v-card-text>
-              <v-text-field
-                  v-model="form.username"
-                  label="Username"
-                  prepend-inner-icon="mdi-account-outline"
-                  variant="outlined"
-                  required
-                  class="mb-3"
-              />
-              <v-text-field
-                  v-model="form.password"
-                  type="password"
-                  label="Password"
-                  prepend-inner-icon="mdi-lock-outline"
-                  variant="outlined"
-                  required
-              />
+        <div v-if="user" class="d-flex align-center ga-3">
+          <div class="text-medium-emphasis">Logged in as <strong>{{ user }}</strong></div>
+          <v-btn color="red-lighten-1" @click="logout" variant="flat">Logout</v-btn>
+        </div>
+      </header>
 
-              <v-btn class="mt-4" color="purple-accent-1" @click="login" block size="large">
-                Login
-              </v-btn>
+      <!-- LOGIN -->
+      <v-card v-if="!user" class="pa-6 mx-auto" max-width="450" elevation="12" rounded="lg">
+        <v-card-title class="text-h5 text-center mb-4">Welcome!</v-card-title>
+        <v-card-text>
+          <v-text-field v-model="form.username" label="Username" prepend-inner-icon="mdi-account-outline" variant="outlined" class="mb-3" />
+          <v-text-field v-model="form.password" type="password" label="Password" prepend-inner-icon="mdi-lock-outline" variant="outlined" />
+          <v-btn class="mt-4" color="purple-accent-1" @click="login" block size="large">Login</v-btn>
+          <v-btn class="mt-3" variant="tonal" @click="registerUser" block>Register</v-btn>
+          <v-alert v-if="msg" class="mt-5" type="error" variant="tonal" density="compact" border="start">{{ msg }}</v-alert>
+        </v-card-text>
+      </v-card>
 
-              <v-btn class="mt-3" variant="tonal" @click="registerUser" block>
-                Register
-              </v-btn>
-
-              <v-alert v-if="msg" class="mt-5" type="error" variant="tonal" density="compact" border="start">
-                {{ msg }}
-              </v-alert>
-            </v-card-text>
-          </v-card>
-
-          <div v-else>
-            <v-sheet rounded="lg" class="pa-4 mb-6 d-flex justify-space-between align-center" border>
-              <div class="text-h6">
-                Welcome, <strong class="purple-accent-1">{{ user }}</strong>
-              </div>
-              <v-btn color="red-lighten-1" @click="logout" variant="flat">Logout</v-btn>
-            </v-sheet>
-
-            <v-card class="pa-6 mb-6" rounded="lg" elevation="4">
-              <div class="d-flex justify-space-between align-center mb-6">
-                <h2 class="text-h5">Our Selection</h2>
-                <v-btn color="primary" @click="loadProducts" prepend-icon="mdi-refresh" variant="elevated">
-                  Load Products
-                </v-btn>
-              </div>
-
-              <v-row v-if="products.length">
-                <v-col v-for="p in products" :key="p.id" cols="12" sm="6" md="4">
-                  <v-card
-                      @click="selectProduct(p)"
-                      :variant="selected?.id === p.id ? 'tonal' : 'elevated'"
-                      :color="selected?.id === p.id ? 'purple-accent-1' : undefined"
-                      hover
-                      rounded="lg"
-                  >
-                    <v-card-title class="text-subtitle-1 font-weight-bold">{{ p.name }}</v-card-title>
-                    <v-chip
-                        v-if="selected?.id === p.id"
-                        class="ma-2"
-                        style="position:absolute; top:4px; right:4px;"
-                        color="white"
-                        text-color="black"
-                        size="small"
-                    >
-                      Selected
-                    </v-chip>
-                  </v-card>
-                </v-col>
-              </v-row>
-
-              <v-alert v-else type="info" variant="tonal" border="start" icon="mdi-food-variant">
-                Click "Load Products" to see our selection.
-              </v-alert>
-            </v-card>
-
-            <v-card v-if="selected" class="pa-6" rounded="lg" elevation="4">
-              <h2 class="text-h5 mb-4">Order '{{ selected.name }}'</h2>
-
-              <v-text-field
-                  v-model="quantity"
-                  type="number"
-                  min="1"
-                  label="Quantity"
-                  variant="outlined"
-                  density="comfortable"
-                  class="mb-4"
-              />
-
-              <v-btn color="green-lighten-1" @click="order" block size="large" prepend-icon="mdi-cart-check">
-                Submit Order
-              </v-btn>
-
-              <v-alert v-if="msg" class="mt-5" type="error" variant="tonal" density="compact" border="start">
-                {{ msg }}
-              </v-alert>
-            </v-card>
+      <!-- APP (always side-by-side) -->
+      <div v-else class="layout">
+        <!-- PRODUCTS -->
+        <v-card class="pa-5 flex-grow-1" rounded="lg" elevation="4">
+          <div class="d-flex justify-space-between align-center mb-4">
+            <h2 class="text-h5">Products</h2>
+            <div class="d-flex ga-2">
+              <v-btn color="primary" @click="loadProducts" prepend-icon="mdi-refresh" variant="elevated">Load</v-btn>
+              <v-btn variant="tonal" prepend-icon="mdi-cart-off" @click="clearCart">Clear Cart</v-btn>
+            </div>
           </div>
-        </v-col>
-      </v-row>
+
+          <v-row v-if="products.length" class="ga-4" no-gutters>
+            <v-col v-for="p in products" :key="p.id" cols="12" sm="6" md="4" lg="3" xl="2">
+              <v-card
+                  class="product-card"
+                  rounded="lg"
+                  hover
+                  :variant="inCart(p.id) ? 'tonal' : 'elevated'"
+                  :color="inCart(p.id) ? 'purple-darken-2' : undefined"
+                  @click="toggleCart(p)"
+              >
+                <v-card-title class="text-subtitle-1 font-weight-bold d-flex justify-space-between align-center">
+                  <span class="text-truncate">{{ p.name }}</span>
+                  <span class="text-medium-emphasis ms-2" style="white-space:nowrap">
+                    {{ priceText(p) }}
+                  </span>
+                </v-card-title>
+              </v-card>
+            </v-col>
+          </v-row>
+
+          <v-alert v-else type="info" variant="tonal" border="start" icon="mdi-food-variant">
+            Click "Load" to see our selection.
+          </v-alert>
+        </v-card>
+
+        <!-- ORDER (right) -->
+        <v-card class="pa-5 order-card" rounded="lg" elevation="10">
+          <div class="d-flex justify-space-between align-center mb-3">
+            <h2 class="text-h6">Order</h2>
+            <div class="text-medium-emphasis">Items: {{ items.length }}</div>
+          </div>
+
+          <v-divider class="mb-4" />
+
+          <div v-if="!items.length" class="text-medium-emphasis">Select products to add them to your cart.</div>
+
+          <div v-else class="d-flex flex-column ga-3">
+            <v-card v-for="it in items" :key="it.product.id" variant="outlined" rounded="lg" class="pa-3">
+              <div class="d-flex justify-space-between align-center ga-2">
+                <div style="min-width:0" class="flex-grow-1">
+                  <div class="font-weight-bold text-truncate">{{ it.product.name }}</div>
+                  <div class="text-medium-emphasis">
+                    {{ priceText(it.product) }}
+                    <span v-if="hasPrice(it.product)">
+                      · Line: <strong>{{ fmt(it.product.price_cents! * it.qty) }}</strong>
+                    </span>
+                    <span v-else>· Line: —</span>
+                  </div>
+                </div>
+
+                <v-text-field
+                    v-model.number="it.qty"
+                    type="number"
+                    min="1"
+                    density="compact"
+                    variant="outlined"
+                    hide-details
+                    style="width: 86px"
+                    @update:modelValue="it.qty = clamp(it.qty)"
+                />
+                <v-btn icon="mdi-close" variant="text" @click="remove(it.product.id)" />
+              </div>
+            </v-card>
+
+            <v-divider class="my-2" />
+
+            <div class="d-flex justify-space-between align-center">
+              <div class="text-medium-emphasis">Total</div>
+              <div class="text-h6 font-weight-bold">{{ totalText }}</div>
+            </div>
+
+            <v-btn color="green-lighten-1" @click="submitOrder" block size="large" prepend-icon="mdi-cart-check">
+              Submit Order
+            </v-btn>
+
+            <v-alert v-if="msg" type="error" variant="tonal" density="compact" border="start" class="mt-2">
+              {{ msg }}
+            </v-alert>
+          </div>
+        </v-card>
+      </div>
     </v-container>
   </v-app>
 </template>
 
 <script lang="ts" setup>
-import { ref, watch } from "vue";
+import { computed, reactive, ref } from "vue";
 
-interface Product {
-  id: number;
-  name: string;
-}
+type Cap = "Authentication" | "ProductList" | "OrderPlaced" | "Authorization";
+type Product = { id: number; name: string; price_cents?: number; stock?: number };
+type CartItem = { product: Product; qty: number };
 
 const MICROCLIENT = "Shop-Microclient";
 const LOGIN_COMPONENT = "LoginView.vue";
 const PRODUCTLIST_COMPONENT = "ProductListView.vue";
 
 const user = ref<string | null>(null);
-const form = ref({ username: "", password: "" });
+const form = reactive({ username: "", password: "" });
 const msg = ref("");
 
 const products = ref<Product[]>([]);
-const selected = ref<Product | null>(null);
-const quantity = ref<number>(1);
+const cart = reactive<Record<number, CartItem>>({});
 
-watch(form, () => (msg.value = ""), { deep: true });
+const items = computed(() => Object.values(cart));
+const clamp = (n: any) => Math.max(1, Math.trunc(Number(n) || 1));
+const inCart = (id: number) => !!cart[id];
+const remove = (id: number) => delete cart[id];
+const clearCart = () => Object.keys(cart).forEach((k) => delete cart[Number(k)]);
+
+const hasPrice = (p: Product) => Number.isFinite(p.price_cents);
+const fmt = (cents: number) => `${(cents / 100).toFixed(2).replace(".", ",")} €`;
+const priceText = (p: Product) => (hasPrice(p) ? fmt(p.price_cents!) : "—");
+
+const totalCents = computed(() =>
+    items.value.reduce((s, it) => (hasPrice(it.product) ? s + it.product.price_cents! * clamp(it.qty) : s), 0)
+);
+const totalText = computed(() => (items.value.every((it) => hasPrice(it.product)) ? fmt(totalCents.value) : "—"));
 
 const JWT_KEY = "jwt";
 const SESSION_KEY = "sessionId";
+const getJwt = () => localStorage.getItem(JWT_KEY);
+const setJwt = (t: string) => localStorage.setItem(JWT_KEY, t);
+const clearJwt = () => localStorage.removeItem(JWT_KEY);
+const getSessionId = () => localStorage.getItem(SESSION_KEY);
+const setSessionId = (id: string) => localStorage.setItem(SESSION_KEY, id);
+const clearSessionId = () => localStorage.removeItem(SESSION_KEY);
 
-function getJwt(): string | null {
-  return localStorage.getItem(JWT_KEY);
-}
-function setJwt(token: string) {
-  localStorage.setItem(JWT_KEY, token);
-}
-function clearJwt() {
-  localStorage.removeItem(JWT_KEY);
-}
+const newTraceId = () =>
+    // @ts-ignore
+    (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const getOrCreateSessionId = () => getSessionId() || (setSessionId(newTraceId()), getSessionId()!);
 
-function getSessionId(): string | null {
-  return localStorage.getItem(SESSION_KEY);
-}
-function setSessionId(id: string) {
-  localStorage.setItem(SESSION_KEY, id);
-}
-function clearSessionId() {
-  localStorage.removeItem(SESSION_KEY);
-}
+const norm = (raw: any): Product => {
+  const id = Math.trunc(Number(raw?.id) || 0);
+  const name = String(raw?.name ?? "");
+  const pc = raw?.price_cents ?? raw?.priceCents;
+  const price_cents = Number.isFinite(Number(pc)) ? Math.trunc(Number(pc)) : undefined;
+  return { id, name, price_cents, stock: Number(raw?.stock ?? 0) || 0 };
+};
 
-function newTraceId(): string {
-  // @ts-ignore
-  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function toggleCart(p: Product) {
+  msg.value = "";
+  cart[p.id] ? delete cart[p.id] : (cart[p.id] = { product: p, qty: 1 });
 }
 
-function getOrCreateSessionId(): string {
-  const existing = getSessionId();
-  if (existing) return existing;
-
-  const id = newTraceId();
-  setSessionId(id);
-  return id;
-}
-
-async function postBlackboardEvent(params: {
-  traceId: string;
-  senderComponent: string;
-  capabilities: ("Authentication" | "ProductList" | "OrderPlaced" | "Authorization")[];
-  payload: any;
-}) {
+async function postBlackboardEvent(params: { traceId: string; senderComponent: string; capabilities: Cap[]; payload: any }) {
   const jwt = getJwt();
-  const isAuthentication = params.capabilities.includes("Authentication");
-
+  const isAuth = params.capabilities.includes("Authentication");
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-
-  if (!isAuthentication) {
-    if (!jwt) {
-      console.warn("[Blackboard] Missing JWT -> will likely 401");
-    } else {
-      headers["Authorization"] = `Bearer ${jwt}`;
-    }
-  }
-
-  console.log("[Blackboard] POST /api/blackboard/messages", {
-    traceId: params.traceId,
-    caps: params.capabilities,
-    isAuthentication,
-    hasJwt: !!jwt,
-    authHeaderSent: !!headers.Authorization,
-  });
+  if (!isAuth && jwt) headers["Authorization"] = `Bearer ${jwt}`;
 
   const res = await fetch("/api/blackboard/messages", {
     method: "POST",
@@ -219,7 +205,6 @@ async function postBlackboardEvent(params: {
 
 async function login() {
   msg.value = "";
-
   const tid = newTraceId();
   setSessionId(tid);
 
@@ -227,31 +212,18 @@ async function login() {
     traceId: tid,
     senderComponent: LOGIN_COMPONENT,
     capabilities: ["Authentication"],
-    payload: {
-      action: "login",
-      username: form.value.username,
-      password: form.value.password,
-    },
+    payload: { action: "login", username: form.username, password: form.password },
   });
 
-  if (status === 401) {
-    msg.value = "401 on Authentication. Backend treats it as non-auth request (capability mapping issue).";
-    clearSessionId();
-    return;
-  }
-
+  if (status === 401) return (msg.value = "401 on Authentication.");
   if (json?.ok && json?.data?.token) {
     setJwt(json.data.token);
-    user.value = json.data.username ?? form.value.username;
-  } else {
-    clearSessionId();
-    msg.value = json?.data?.error || "Login failed";
-  }
+    user.value = json.data.username ?? form.username;
+  } else msg.value = json?.data?.error || "Login failed";
 }
 
 async function registerUser() {
   msg.value = "";
-
   const tid = newTraceId();
   setSessionId(tid);
 
@@ -259,42 +231,29 @@ async function registerUser() {
     traceId: tid,
     senderComponent: LOGIN_COMPONENT,
     capabilities: ["Authentication"],
-    payload: {
-      action: "register",
-      username: form.value.username,
-      password: form.value.password,
-    },
+    payload: { action: "register", username: form.username, password: form.password },
   });
 
-  if (status === 401) {
-    msg.value = "401 on Authentication. Backend treats it as non-auth request (capability mapping issue).";
-    clearSessionId();
-    return;
-  }
-
+  if (status === 401) return (msg.value = "401 on Authentication.");
   if (json?.ok && json?.data?.token) {
     setJwt(json.data.token);
-    user.value = json.data.username ?? form.value.username;
-  } else {
-    clearSessionId();
-    msg.value = json?.data?.error || "Registration failed";
-  }
+    user.value = json.data.username ?? form.username;
+  } else msg.value = json?.data?.error || "Registration failed";
 }
 
 function logout() {
   msg.value = "";
   user.value = null;
   products.value = [];
-  selected.value = null;
-  form.value = { username: "", password: "" };
-
+  clearCart();
+  form.username = "";
+  form.password = "";
   clearJwt();
   clearSessionId();
 }
 
 async function loadProducts() {
   msg.value = "";
-
   const tid = getOrCreateSessionId();
 
   const { status, json } = await postBlackboardEvent({
@@ -305,56 +264,46 @@ async function loadProducts() {
   });
 
   if (status === 401) {
-    clearJwt();
-    clearSessionId();
-    user.value = null;
-    msg.value = json?.data?.error || "Unauthorized (JWT missing/invalid)";
-    return;
+    clearJwt(); clearSessionId(); user.value = null;
+    return (msg.value = json?.data?.error || "Unauthorized");
   }
 
-  if (json?.ok && json?.data?.productList) {
-    products.value = json.data.productList;
-  } else {
-    msg.value = json?.data?.error || "Failed to load products";
-  }
+  const list = json?.data?.productList ?? [];
+  products.value = Array.isArray(list) ? list.map(norm) : [];
 }
 
-function selectProduct(p: Product) {
-  selected.value = selected.value?.id === p.id ? null : p;
+async function submitOrder() {
   msg.value = "";
-}
-
-async function order() {
-  msg.value = "";
-  if (!selected.value) return;
+  if (!items.value.length) return;
 
   const tid = getOrCreateSessionId();
+  const payload = {
+    items: items.value.map((it) => ({
+      product: { id: it.product.id, name: it.product.name, price_cents: it.product.price_cents },
+      quantity: clamp(it.qty),
+    })),
+    total_cents: items.value.every((it) => hasPrice(it.product)) ? totalCents.value : null,
+  };
 
   const { status, json } = await postBlackboardEvent({
     traceId: tid,
     senderComponent: PRODUCTLIST_COMPONENT,
     capabilities: ["OrderPlaced"],
-    payload: { product: selected.value, quantity: quantity.value },
+    payload,
   });
 
   if (status === 401) {
-    clearJwt();
-    clearSessionId();
-    user.value = null;
-    msg.value = json?.data?.error || "Unauthorized (JWT missing/invalid)";
-    return;
+    clearJwt(); clearSessionId(); user.value = null;
+    return (msg.value = json?.data?.error || "Unauthorized");
   }
 
-  if (json?.ok) {
-    msg.value = `Order sent!`;
-    selected.value = null;
-    quantity.value = 1;
-  } else {
-    msg.value = json?.data?.error || "Order failed";
-  }
+  if (json?.ok) { msg.value = "Order sent!"; clearCart(); }
+  else msg.value = json?.data?.error || "Order failed";
 }
 </script>
 
 <style scoped>
-.v-card { position: relative; }
+.layout { display:flex; gap: 24px; align-items:flex-start; }
+.product-card { cursor:pointer; }
+.order-card { width: 360px; flex: 0 0 360px; position: sticky; top: 16px; }
 </style>
