@@ -3,43 +3,121 @@
     <v-container fluid class="py-6 px-6">
       <header class="d-flex align-center justify-space-between mb-6">
         <div>
-          <h1 class="text-h3 font-weight-bold text-purple-accent-1">ShopNServe</h1>
-          <p class="text-medium-emphasis">Your favorite snacks and drinks, delivered fast</p>
+          <h1 class="text-h3 font-weight-bold text-purple-accent-1">
+            ShopNServe
+          </h1>
+          <p class="text-medium-emphasis">
+            Your favorite snacks and drinks, delivered fast
+          </p>
         </div>
-
         <div v-if="user" class="d-flex align-center ga-3">
-          <div class="text-medium-emphasis">Logged in as <strong>{{ user }}</strong></div>
-          <v-btn color="red-lighten-1" @click="logout" variant="flat">Logout</v-btn>
+          <v-btn
+              variant="tonal"
+              prepend-icon="mdi-history"
+              @click="loadOrders"
+          >
+            Orders
+          </v-btn>
+          <div class="text-medium-emphasis">
+            Logged in as <strong>{{ user }}</strong>
+          </div>
+          <v-btn
+              color="red-lighten-1"
+              variant="flat"
+              @click="logout"
+          >
+            Logout
+          </v-btn>
         </div>
       </header>
-
-      <!-- LOGIN -->
-      <v-card v-if="!user" class="pa-6 mx-auto" max-width="450" elevation="12" rounded="lg">
-        <v-card-title class="text-h5 text-center mb-4">Welcome!</v-card-title>
+      <v-card
+          v-if="!user"
+          class="pa-6 mx-auto"
+          max-width="450"
+          elevation="12"
+          rounded="lg"
+      >
+        <v-card-title class="text-h5 text-center mb-4">
+          Welcome!
+        </v-card-title>
         <v-card-text>
-          <v-text-field v-model="form.username" label="Username" prepend-inner-icon="mdi-account-outline" variant="outlined" class="mb-3" />
-          <v-text-field v-model="form.password" type="password" label="Password" prepend-inner-icon="mdi-lock-outline" variant="outlined" />
-          <v-btn class="mt-4" color="purple-accent-1" @click="login" block size="large">Login</v-btn>
-          <v-btn class="mt-3" variant="tonal" @click="registerUser" block>Register</v-btn>
-          <v-alert v-if="msg" class="mt-5" type="error" variant="tonal" density="compact" border="start">{{ msg }}</v-alert>
+          <v-text-field
+              v-model="form.username"
+              label="Username"
+              prepend-inner-icon="mdi-account-outline"
+              variant="outlined"
+              class="mb-3"
+          />
+          <v-text-field
+              v-model="form.password"
+              type="password"
+              label="Password"
+              prepend-inner-icon="mdi-lock-outline"
+              variant="outlined"
+          />
+          <v-btn
+              class="mt-4"
+              color="purple-accent-1"
+              block
+              size="large"
+              @click="login"
+          >
+            Login
+          </v-btn>
+          <v-btn
+              class="mt-3"
+              variant="tonal"
+              block
+              @click="registerUser"
+          >
+            Register
+          </v-btn>
+          <v-alert
+              v-if="msg"
+              class="mt-5"
+              type="error"
+              variant="tonal"
+              density="compact"
+              border="start"
+          >
+            {{ msg }}
+          </v-alert>
         </v-card-text>
       </v-card>
+      <div v-else>
+        <div class="layout">
+          <!-- PRODUCTS -->
+          <v-card class="pa-5 flex-grow-1" rounded="lg" elevation="4">
 
-      <!-- APP (always side-by-side) -->
-      <div v-else class="layout">
-        <!-- PRODUCTS -->
-        <v-card class="pa-5 flex-grow-1" rounded="lg" elevation="4">
-          <div class="d-flex justify-space-between align-center mb-4">
-            <h2 class="text-h5">Products</h2>
-            <div class="d-flex ga-2">
-              <v-btn color="primary" @click="loadProducts" prepend-icon="mdi-refresh" variant="elevated">Load</v-btn>
-              <v-btn variant="tonal" prepend-icon="mdi-cart-off" @click="clearCart">Clear Cart</v-btn>
+            <div class="d-flex justify-space-between align-center mb-4">
+              <h2 class="text-h5">Products</h2>
+
+              <div class="d-flex ga-2">
+                <v-btn
+                    color="primary"
+                    prepend-icon="mdi-refresh"
+                    variant="elevated"
+                    @click="loadProducts"
+                >
+                  Load
+                </v-btn>
+                <v-btn
+                    variant="tonal"
+                    prepend-icon="mdi-cart-off"
+                    @click="clearCart"
+                >
+                  Clear Cart
+                </v-btn>
+              </div>
             </div>
-          </div>
-
-          <v-row v-if="products.length" class="ga-4" no-gutters>
-            <v-col v-for="p in products" :key="p.id" cols="12" sm="6" md="4" lg="3" xl="2">
+            <!-- AUTO RESPONSIVE GRID -->
+            <div
+                v-if="products.length"
+                class="product-grid"
+            >
               <v-card
+                  v-for="p in products"
+                  :key="p.id"
                   class="product-card"
                   rounded="lg"
                   hover
@@ -47,75 +125,131 @@
                   :color="inCart(p.id) ? 'purple-darken-2' : undefined"
                   @click="toggleCart(p)"
               >
-                <v-card-title class="text-subtitle-1 font-weight-bold d-flex justify-space-between align-center">
-                  <span class="text-truncate">{{ p.name }}</span>
-                  <span class="text-medium-emphasis ms-2" style="white-space:nowrap">
+                <v-card-title class="d-flex justify-space-between">
+                  <span class="text-truncate">
+                    {{ p.name }}
+                  </span>
+                  <span class="text-medium-emphasis">
                     {{ priceText(p) }}
                   </span>
                 </v-card-title>
               </v-card>
-            </v-col>
-          </v-row>
-
-          <v-alert v-else type="info" variant="tonal" border="start" icon="mdi-food-variant">
-            Click "Load" to see our selection.
-          </v-alert>
-        </v-card>
-
-        <!-- ORDER (right) -->
-        <v-card class="pa-5 order-card" rounded="lg" elevation="10">
-          <div class="d-flex justify-space-between align-center mb-3">
-            <h2 class="text-h6">Order</h2>
-            <div class="text-medium-emphasis">Items: {{ items.length }}</div>
-          </div>
-
-          <v-divider class="mb-4" />
-
-          <div v-if="!items.length" class="text-medium-emphasis">Select products to add them to your cart.</div>
-
-          <div v-else class="d-flex flex-column ga-3">
-            <v-card v-for="it in items" :key="it.product.id" variant="outlined" rounded="lg" class="pa-3">
-              <div class="d-flex justify-space-between align-center ga-2">
-                <div style="min-width:0" class="flex-grow-1">
-                  <div class="font-weight-bold text-truncate">{{ it.product.name }}</div>
-                  <div class="text-medium-emphasis">
-                    {{ priceText(it.product) }}
-                    <span v-if="hasPrice(it.product)">
-                      · Line: <strong>{{ fmt(it.product.price_cents! * it.qty) }}</strong>
-                    </span>
-                    <span v-else>· Line: —</span>
-                  </div>
-                </div>
-
-                <v-text-field
-                    v-model.number="it.qty"
-                    type="number"
-                    min="1"
-                    density="compact"
-                    variant="outlined"
-                    hide-details
-                    style="width: 86px"
-                    @update:modelValue="it.qty = clamp(it.qty)"
-                />
-                <v-btn icon="mdi-close" variant="text" @click="remove(it.product.id)" />
-              </div>
-            </v-card>
-
-            <v-divider class="my-2" />
-
-            <div class="d-flex justify-space-between align-center">
-              <div class="text-medium-emphasis">Total</div>
-              <div class="text-h6 font-weight-bold">{{ totalText }}</div>
             </div>
-
-            <v-btn color="green-lighten-1" @click="submitOrder" block size="large" prepend-icon="mdi-cart-check">
-              Submit Order
-            </v-btn>
-
-            <v-alert v-if="msg" type="error" variant="tonal" density="compact" border="start" class="mt-2">
-              {{ msg }}
+            <v-alert
+                v-else
+                type="info"
+                variant="tonal"
+                border="start"
+            >
+              Click "Load" to see our selection.
             </v-alert>
-          </div>
+          </v-card>
+          <!-- ORDER PANEL -->
+          <v-card class="pa-5 order-card" rounded="lg" elevation="10">
+
+            <div class="d-flex justify-space-between mb-3">
+              <h2 class="text-h6">Order</h2>
+              <div class="text-medium-emphasis">
+                Items: {{ items.length }}
+              </div>
+            </div>
+            <v-divider class="mb-4" />
+            <div v-if="!items.length" class="text-medium-emphasis">
+              Select products to add them to your cart.
+            </div>
+            <div v-else class="d-flex flex-column ga-3">
+
+              <v-card
+                  v-for="it in items"
+                  :key="it.product.id"
+                  variant="outlined"
+                  rounded="lg"
+                  class="pa-3"
+              >
+                <div class="d-flex justify-space-between align-center">
+
+                  <div class="flex-grow-1">
+                    <div class="font-weight-bold">
+                      {{ it.product.name }}
+                    </div>
+
+                    <div class="text-medium-emphasis">
+                      {{ priceText(it.product) }}
+                      · Line:
+                      {{ fmt(it.product.price_cents * it.qty) }}
+                    </div>
+                  </div>
+                  <!-- COMPACT QUANTITY -->
+                  <v-text-field
+                      v-model.number="it.qty"
+                      type="number"
+                      min="1"
+                      density="compact"
+                      variant="outlined"
+                      hide-details
+                      class="qty-field"
+                  />
+
+                </div>
+              </v-card>
+              <v-divider />
+              <div class="d-flex justify-space-between">
+                <div>Total</div>
+                <div class="font-weight-bold">
+                  {{ totalText }}
+                </div>
+              </div>
+              <v-btn
+                  color="green-lighten-1"
+                  prepend-icon="mdi-cart-check"
+                  block
+                  size="large"
+                  @click="submitOrder"
+              >
+                Submit Order
+              </v-btn>
+            </div>
+          </v-card>
+
+        </div>
+        <!-- ORDER HISTORY -->
+        <v-card
+            v-if="orders.length"
+            class="mt-8 pa-6"
+            rounded="lg"
+            elevation="6"
+        >
+          <h2 class="text-h6 mb-4">Order History</h2>
+          <v-expansion-panels>
+            <v-expansion-panel
+                v-for="o in orders"
+                :key="o.id"
+            >
+              <v-expansion-panel-title>
+                Order #{{ o.id }} —
+                {{ fmt(o.total_cents) }}
+              </v-expansion-panel-title>
+              <v-expansion-panel-text>
+
+                <div class="text-medium-emphasis mb-2">
+                  {{ o.created_at }}
+                </div>
+                <div class="d-flex flex-wrap ga-2">
+                  <v-chip
+                      v-for="it in parseItems(o.items)"
+                      :key="it.product.id"
+                      color="purple-darken-2"
+                      variant="tonal"
+                  >
+                    {{ it.product.name }}
+                    × {{ it.quantity }}
+                    —
+                    {{ fmt(it.product.price_cents * it.quantity) }}
+                  </v-chip>
+                </div>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
         </v-card>
       </div>
     </v-container>
@@ -139,6 +273,7 @@ const msg = ref("");
 
 const products = ref<Product[]>([]);
 const cart = reactive<Record<number, CartItem>>({});
+const orders = ref<any[]>([]);
 
 const items = computed(() => Object.values(cart));
 const clamp = (n: any) => Math.max(1, Math.trunc(Number(n) || 1));
@@ -180,6 +315,14 @@ const norm = (raw: any): Product => {
 function toggleCart(p: Product) {
   msg.value = "";
   cart[p.id] ? delete cart[p.id] : (cart[p.id] = { product: p, qty: 1 });
+}
+
+function parseItems(json: string) {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return [];
+  }
 }
 
 async function postBlackboardEvent(params: { traceId: string; senderComponent: string; capabilities: Cap[]; payload: any }) {
@@ -300,10 +443,63 @@ async function submitOrder() {
   if (json?.ok) { msg.value = "Order sent!"; clearCart(); }
   else msg.value = json?.data?.error || "Order failed";
 }
+async function loadOrders() {
+  msg.value = "";
+  const tid = getOrCreateSessionId();
+
+  const { status, json } = await postBlackboardEvent({
+    traceId: tid,
+    senderComponent: PRODUCTLIST_COMPONENT,
+    capabilities: ["OrderHistory"],
+    payload: {action: "listOrders"},
+  });
+
+  if (status === 401) {
+    clearJwt();
+    clearSessionId();
+    user.value = null;
+    return (msg.value = json?.data?.error || "Unauthorized");
+  }
+
+  orders.value = json?.data?.orders || [];
+}
 </script>
 
 <style scoped>
-.layout { display:flex; gap: 24px; align-items:flex-start; }
-.product-card { cursor:pointer; }
-.order-card { width: 360px; flex: 0 0 360px; position: sticky; top: 16px; }
+.layout {
+ display: flex;
+ gap: 24px;
+ align-items: flex-start;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.product-card {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.product-card:hover {
+  transform: translateY(-2px);
+}
+
+.order-card {
+  width: 340px;
+  flex: 0 0 340px;
+  position: sticky;
+  top: 16px;
+}
+
+.qty-field {
+  width: 64px;
+}
+
+.qty-field :deep(input) {
+  text-align: center;
+  padding: 4px 6px !important;
+}
 </style>

@@ -4,5 +4,6 @@ public enum Capability {
     Authorization,
     Authentication,
     ProductList,
+    OrderHistory,
     OrderPlaced
 }

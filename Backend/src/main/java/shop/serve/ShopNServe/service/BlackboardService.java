@@ -110,9 +110,12 @@ public class BlackboardService {
 
     private String backendFor(Capability cap) {
         if (cap == null) return "UnknownService";
+
         return switch (cap) {
             case Authentication, Authorization -> "AuthService";
-            case ProductList, OrderPlaced -> "ProductListService";
+            case ProductList -> "ProductService";
+            case OrderPlaced -> "OrderService";
+            case OrderHistory -> "OrderService";
             default -> cap.name() + "Service";
         };
     }
