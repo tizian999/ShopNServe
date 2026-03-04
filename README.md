@@ -247,10 +247,15 @@ Future extensions could include:
 
 ---
 
-# 👨‍💻 Author
+# 👨‍🎓 Author
 
-Developed as part of a **data-driven system architecture project** demonstrating:
+This project was developed as part of a **university project** in the field of **data-driven system architectures**.
 
-- blackboard architecture
-- event-driven systems
-- graph-based request tracing
+The goal of the project was to design and implement a small application demonstrating:
+
+- a **Blackboard Architecture**
+- **event-driven communication** between frontend and backend components
+- **graph-based request tracing** using Neo4j
+- integration of **multiple data stores** (MySQL for transactional data and Neo4j for system interaction graphs)
+
+The project focuses on understanding **system architecture patterns**, **event-based processing**, and **traceability of system interactions** in modern distributed applications.
