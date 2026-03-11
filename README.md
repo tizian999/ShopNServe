@@ -70,29 +70,29 @@ This component decides which backend component should process the request.
 # 🏗 Architecture Overview
 
 ```text
-                                                                       ┌───────────────────────────────┐
-                                                                       │           Frontend            │
-                                                                       │         Vue + Vuetify         │
-                                                                       │            Shop.vue           │
-                                                                       └───────────────┬───────────────┘
-                                                                                       │
-                                                                                       │ POST /api/blackboard/messages
-                                                                                       ▼
-                                                                       ┌───────────────────────────────┐
-                                                                       │        BlackboardService      │
-                                                                       │  Central request dispatcher   │
-                                                                       └───────────────┬───────────────┘
-                                                                                       │
-                                                                       ┌───────────────┼────────────────┐
-                                                                       ▼               ▼                ▼ 
-                                                                  AuthHandler  ProductListHandler  OrderHandlers
-                                                                       │               │                │
-                                                                       ▼               ▼                ▼
-                                                                     MySQL           MySQL            MySQL
-                                                                                       │
-                                                                                       ▼
-                                                                                     Neo4j
-                                                                             (interaction tracing)
+                                           ┌───────────────────────────────┐
+                                           │           Frontend            │
+                                           │         Vue + Vuetify         │
+                                           │            Shop.vue           │
+                                           └───────────────┬───────────────┘
+                                                           │
+                                                           │ POST /api/blackboard/messages
+                                                           ▼
+                                           ┌───────────────────────────────┐
+                                           │        BlackboardService      │
+                                           │  Central request dispatcher   │
+                                           └───────────────┬───────────────┘
+                                                           │
+                                           ┌───────────────┼────────────────┐
+                                           ▼               ▼                ▼ 
+                                      AuthHandler  ProductListHandler  OrderHandlers
+                                           │               │                │
+                                           ▼               ▼                ▼
+                                         MySQL           MySQL            MySQL
+                                                           │
+                                                           ▼
+                                                         Neo4j
+                                                 (interaction tracing)
 ```
 
 ---
@@ -114,43 +114,43 @@ Every user interaction follows the same conceptual flow:
 # 🔁 Example Sequence: Loading the ProductList
 
 ```text
-                                                                                     User
-                                                                                       │
-                                                                                       │ Login
-                                                                                       ▼
-                                                                               Frontend (Shop.vue)
-                                                                                       │
-                                                                                       │ capability: Authentication
-                                                                                       ▼
-                                                                               BlackboardService
-                                                                                       │
-                                                                                       │ validate JWT
-                                                                                       ▼
-                                                                                  AuthHandler
-                                                                                       │
-                                                                                       ▼
-                                                                               User authenticated
-                                                                          
-                                                                          -------------------------------------
-                                                                          
-                                                                                     User
-                                                                                       │
-                                                                                       │ Click "Load Products"
-                                                                                       ▼
-                                                                                   Frontend
-                                                                                       │
-                                                                                       │ capability: ProductList
-                                                                                       ▼
-                                                                               BlackboardService
-                                                                                       │
-                                                                                       ▼
-                                                                               ProductListHandler
-                                                                                       │
-                                                                                       ▼
-                                                                              MySQL (products table)
-                                                                                       │
-                                                                                       ▼
-                                                                          Products returned to frontend
+                                                         User
+                                                           │
+                                                           │ Login
+                                                           ▼
+                                                   Frontend (Shop.vue)
+                                                           │
+                                                           │ capability: Authentication
+                                                           ▼
+                                                   BlackboardService
+                                                           │
+                                                           │ validate JWT
+                                                           ▼
+                                                      AuthHandler
+                                                           │
+                                                           ▼
+                                                   User authenticated
+                                              
+                                              -------------------------------------
+                                              
+                                                         User
+                                                           │
+                                                           │ Click "Load Products"
+                                                           ▼
+                                                       Frontend
+                                                           │
+                                                           │ capability: ProductList
+                                                           ▼
+                                                   BlackboardService
+                                                           │
+                                                           ▼
+                                                   ProductListHandler
+                                                           │
+                                                           ▼
+                                                  MySQL (products table)
+                                                           │
+                                                           ▼
+                                              Products returned to frontend
 ```
 
 ---
@@ -405,21 +405,21 @@ Tracks:
 The system consists of several loosely coupled components.
 
 ```
-                                                                               Frontend (Shop.vue)
-                                                                                       │
-                                                                                       ▼
-                                                                                BlackboardService
-                                                                                       │
-                                                                       ┌───────────────┼────────────────┐
-                                                                       │               │                │
-                                                                   AuthService   ProductService   OrderService
-                                                                          │            │              │
-                                                                          ▼            ▼              ▼
-                                                                        MySQL        MySQL           MySQL
-                                                                                       │
-                                                                                       ▼
-                                                                                     Neo4j
-                                                                           (SessionGraphIngestService)
+                                                   Frontend (Shop.vue)
+                                                           │
+                                                           ▼
+                                                    BlackboardService
+                                                           │
+                                           ┌───────────────┼────────────────┐
+                                           │               │                │
+                                       AuthService   ProductService   OrderService
+                                              │            │              │
+                                              ▼            ▼              ▼
+                                            MySQL        MySQL           MySQL
+                                                           │
+                                                           ▼
+                                                         Neo4j
+                                               (SessionGraphIngestService)
  ```
 
 ### Component Roles
@@ -502,23 +502,23 @@ ProvidedData | response payload |
 ## Example Graph Flow
 
 ```text
-                                                                                 (UIComponent)
-                                                                                       │
-                                                                                       │ REQUESTS
-                                                                                       ▼
-                                                                                 (RequestedData)
-                                                                                       │
-                                                                                       │ HANDLED_BY
-                                                                                       ▼
-                                                                                 (BackendComponent)
-                                                                                       │
-                                                                                       │ TRIGGERS_EVENT
-                                                                                       ▼
-                                                                                 (Capability)
-                                                                                       │
-                                                                                       │ PROVIDES
-                                                                                       ▼
-                                                                                 (ProvidedData)
+                                                     (UIComponent)
+                                                           │
+                                                           │ REQUESTS
+                                                           ▼
+                                                     (RequestedData)
+                                                           │
+                                                           │ HANDLED_BY
+                                                           ▼
+                                                     (BackendComponent)
+                                                           │
+                                                           │ TRIGGERS_EVENT
+                                                           ▼
+                                                     (Capability)
+                                                           │
+                                                           │ PROVIDES
+                                                           ▼
+                                                     (ProvidedData)
 ```
 
 ---
