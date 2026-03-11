@@ -55,11 +55,6 @@ public class SessionGraphIngestService {
             MERGE (s:Session {id:$sid})
             ON CREATE SET s.startedAt = datetime($now)
 
-            // optional: für deine alten /traces Queries
-            MERGE (t:Trace {id:$sid})
-            ON CREATE SET t.startedAt = datetime($now)
-            MERGE (s)-[:HAS_TRACE]->(t)
-
             MERGE (ui:UIComponent {name:$ui})
             MERGE (s)-[:TRIGGERED_BY]->(ui)
         """).bindAll(Map.of(

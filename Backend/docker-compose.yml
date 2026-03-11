@@ -69,16 +69,5 @@ services:
     depends_on:
       - backend
 
-  reactapp:
-    build:
-      context: ../Frontend/microclient-react
-      dockerfile: Dockerfile
-    ports:
-      - "5175:5175"
-    environment:
-      VITE_API_TARGET: http://backend:8080
-    depends_on:
-      - backend
-
 volumes:
   mysql_data:
