@@ -133,7 +133,6 @@ public interface CapabilityHandler {
 
   BlackboardResponse handle(MessageEventRequest event);
 }
-
 ```
 
 ---
@@ -250,6 +249,8 @@ ToDo
 
 # Start the Application
 
+Open the Terminal and navigate to the Project and backend/
+
 ```
 docker compose up –build
 ```
@@ -266,6 +267,8 @@ Neo4j | 7474 |
 ---
 
 # Reset Databases
+
+Open the Terminal and navigate to the Project and backend/
 
 ```
 docker compose down -v
