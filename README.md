@@ -59,6 +59,26 @@ ToDo Bild
 
 ---
 
+# 🔄 System Interaction Flow
+
+Every user interaction follows the same conceptual flow:
+
+1. The frontend triggers an action  
+2. A **capability-based event** is sent to the backend  
+3. The event is received by the **BlackboardService**  
+4. Authentication is validated  
+5. The appropriate **CapabilityHandler** processes the request  
+6. The response is returned to the frontend  
+7. The interaction is recorded in **Neo4j**
+
+---
+
+# 🔁 Example Sequence: Placing an Order
+
+ToDo
+
+---
+
 # ⚙️ Tech Stack
 
 ## Frontend
@@ -83,63 +103,6 @@ Features:
 - **Spring Boot**
 - **Maven**
 - **REST API**
-
-Key components:
-
-### BlackboardService
-
-Central orchestration layer handling all frontend events.
-
-### CapabilityHandlers
-
-| Capability | Description |
-|--------|-------------|
-| Authentication | Login and registration |
-| ProductList | Fetch available products |
-| OrderPlaced | Store new orders |
-| OrderHistory | Retrieve past orders |
-
----
-# 🔄 System Interaction Flow
-
-Every user interaction follows the same conceptual flow:
-
-1. The frontend triggers an action  
-2. A **capability-based event** is sent to the backend  
-3. The event is received by the **BlackboardService**  
-4. Authentication is validated  
-5. The appropriate **CapabilityHandler** processes the request  
-6. The response is returned to the frontend  
-7. The interaction is recorded in **Neo4j**
-
----
-
-# 🔁 Example Sequence: Placing an Order
-
-ToDo
-
----
-
-# 🧩 Component Dependencies
-
-The system consists of several loosely coupled components.
-
-ToDo
-
-### Component Roles
-
-| Component | Responsibility |
-|-----------|---------------|
-Frontend | UI interactions and event generation |
-BlackboardService | central request orchestration |
-CapabilityHandlers | business logic execution |
-OrderService | order processing |
-AuthService | authentication and JWT validation |
-SessionGraphIngestService | interaction graph storage |
-
----
-
-# ⚙️ Backend Architecture
 
 ## BlackboardService
 
@@ -204,6 +167,25 @@ Tracks:
 - request and response data
 
 This enables **graph-based tracing of the application**.
+
+---
+
+# 🧩 Component Dependencies
+
+The system consists of several loosely coupled components.
+
+ToDo
+
+### Component Roles
+
+| Component | Responsibility |
+|-----------|---------------|
+Frontend | UI interactions and event generation |
+BlackboardService | central request orchestration |
+CapabilityHandlers | business logic execution |
+OrderService | order processing |
+AuthService | authentication and JWT validation |
+SessionGraphIngestService | interaction graph storage |
 
 ---
 
