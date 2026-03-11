@@ -1,133 +1,239 @@
 # 🛒 ShopNServe
 
-ShopNServe is a small **event-driven shop application** demonstrating a **Blackboard Architecture** using modern web technologies.
+ShopNServe is a small **event-driven shop application** developed as part of a **university project on data-driven system architectures**.
 
 The application allows users to:
 
 - browse products
 - add items to a cart
 - place orders
-- view their order history
+- view order history
 
-Additionally, all interactions are tracked in **Neo4j**, allowing the system to visualize the full **request flow between UI components and backend services**.
+The main purpose of the project is to demonstrate how modern architectural patterns can be implemented in a real system.
 
----
+The project focuses on:
 
-# 🧠 Architecture
-
-The system follows a **Blackboard Architecture** pattern.
-
-Instead of directly calling backend services, frontend components send **capability-based events** to a central **BlackboardService** which routes them to the correct handler.
-
-# ToDo Bild der Architektur
-
-Each request is processed through the following steps:
-
-1. Frontend sends an event with **capabilities**
-2. BlackboardService validates authentication
-3. The event is routed to the correct **CapabilityHandler**
-4. The handler processes the request
-5. The response is returned to the frontend
-6. Both request and response are logged in **Neo4j**
+- **Blackboard Architecture**
+- **event-driven communication**
+- **traceability of system interactions**
+- integration of **multiple data stores**
 
 ---
 
-# ⚙️ Tech Stack
+# 🎯 Project Goals
 
-## Frontend
+The goal of this project is not only to build a shop application, but to explore **architectural design patterns**.
 
-- **Vue 3**
-- **Vuetify**
-- **TypeScript**
+The system demonstrates:
 
-Features:
+- Blackboard architecture
+- Event-driven backend processing
+- Decoupled frontend-backend communication
+- Graph-based tracing of system interactions
+- Use of multiple specialized databases
 
-- responsive product grid
-- shopping cart
-- quantity editing
-- order submission
-- order history
-- JWT authentication
+The system combines:
 
----
-
-## Backend
-
-- **Spring Boot**
-- **Maven**
-- **REST API**
-
-Key components:
-
-### BlackboardService
-
-Central orchestration layer handling all frontend events.
-
-### CapabilityHandlers
-
-| Capability | Description |
-|--------|-------------|
-| Authentication | Login and registration |
-| ProductList | Fetch available products |
-| OrderPlaced | Store new orders |
-| OrderHistory | Retrieve past orders |
+| Layer | Technology |
+|------|-------------|
+Frontend | Vue 3 + Vuetify |
+Backend | Spring Boot |
+Transactional Database | MySQL |
+Interaction Graph | Neo4j |
 
 ---
 
-# 🗄 Databases
+# 🧠 Conceptual Architecture
 
-## MySQL
+The application follows a **Blackboard Architecture** pattern.
 
-Used for transactional data.
+Instead of directly calling backend services, the frontend sends **events containing capabilities** to a central component called **BlackboardService**.
 
-### products table
+This component decides which backend component should process the request.
+
+---
+
+# 🏗 Architecture Overview
+
+ToDo Bild
+
+---
+
+# 🔄 System Interaction Flow
+
+Every user interaction follows the same conceptual flow:
+
+1. The frontend triggers an action  
+2. A **capability-based event** is sent to the backend  
+3. The event is received by the **BlackboardService**  
+4. Authentication is validated  
+5. The appropriate **CapabilityHandler** processes the request  
+6. The response is returned to the frontend  
+7. The interaction is recorded in **Neo4j**
+
+---
+
+# 🔁 Example Sequence: Placing an Order
+
+ToDo
+
+---
+
+# 🧩 Component Dependencies
+
+The system consists of several loosely coupled components.
+
+ToDo
+
+### Component Roles
+
+| Component | Responsibility |
+|-----------|---------------|
+Frontend | UI interactions and event generation |
+BlackboardService | central request orchestration |
+CapabilityHandlers | business logic execution |
+OrderService | order processing |
+AuthService | authentication and JWT validation |
+SessionGraphIngestService | interaction graph storage |
+
+---
+
+# ⚙️ Backend Architecture
+
+## BlackboardService
+
+The **central orchestration component**.
+
+Responsibilities:
+
+- receives all frontend events
+- validates authentication
+- routes events to capability handlers
+- logs system interactions in Neo4j
+- returns responses to the frontend
+
+---
+
+## Capability Handlers
+
+Handlers implement the actual business logic.
+
+| Handler | Capability | Description |
+|--------|-------------|-------------|
+AuthHandler | Authentication | login & registration |
+ProductListHandler | ProductList | fetch products |
+OrderPlacedHandler | OrderPlaced | store new orders |
+OrderHistoryHandler | OrderHistory | retrieve orders |
+
+Handlers implement a shared interface:
+
+```
+public interface CapabilityHandler {
+  Capability capability();
+
+  BlackboardResponse handle(MessageEventRequest event);
+}
+
+```
+
+---
+
+## OrderService
+
+Handles order-related operations.
+
+Responsibilities:
+
+- calculate order totals
+- convert cart items to JSON
+- store orders in MySQL
+- retrieve order history
+
+---
+
+## SessionGraphIngestService
+
+Responsible for recording **system interaction graphs**.
+
+Tracks:
+
+- sessions
+- UI components
+- backend components
+- capabilities
+- request and response data
+
+This enables **graph-based tracing of the application**.
+
+---
+
+# 🗄 Data Storage
+
+The system uses **two databases with different responsibilities**.
+
+---
+
+# MySQL — Transactional Data
+
+Stores actual business data.
+
+## products
 
 | column | description |
 |------|-------------|
-| id | product id |
-| name | product name |
-| price_cents | product price |
-| description | product description |
-| stock | available stock |
-| created_at | creation timestamp |
-
-### orders table
-
-| column | description |
-|------|-------------|
-| id | order id |
-| items | JSON list of ordered products |
-| total_cents | order total |
-| created_at | order timestamp |
-
-Orders store items as **JSON** to keep the schema simple.
+id | product id |
+name | product name |
+price_cents | price in cents |
+description | product description |
+stock | available stock |
+created_at | creation timestamp |
 
 ---
 
-## Neo4j
+## orders
 
-Neo4j stores **system interaction graphs**.
+| column | description |
+|------|-------------|
+id | order id |
+user_name | username |
+items | JSON list of ordered products |
+total_cents | order total |
+created_at | order timestamp |
 
-This allows tracking:
+Orders store cart items as **JSON** to simplify the schema.
+
+---
+
+# Neo4j — Interaction Graph
+
+Neo4j stores the **interaction graph of the system**.
+
+This graph allows analyzing:
 
 - which UI triggered a request
-- which backend handled it
+- which backend handled the request
 - which capability was executed
-- what data was provided
+- what data was produced
 
-### Main Nodes
+---
 
-- Session
-- Trace
-- UIComponent
-- BackendComponent
-- Capability
-- RequestedData
-- ProvidedData
+## Graph Nodes
 
-### Example Graph Flow
+| Node | Description |
+|-----|-------------|
+Session | user interaction session |
+Trace | request trace |
+UIComponent | frontend component |
+BackendComponent | backend service |
+Capability | executed capability |
+RequestedData | request payload |
+ProvidedData | response payload |
 
-#ToDo Bild
+---
+
+## Example Graph Flow
+
+ToDo
 
 ---
 
@@ -142,12 +248,7 @@ This allows tracking:
 
 ---
 
-## Start the Application
-
-To start the Application navigate to: 
-
-shopnserve/
-backend
+# Start the Application
 
 ```
 docker compose up –build
@@ -164,9 +265,7 @@ Neo4j | 7474 |
 
 ---
 
-## Reset Databases
-
-To start with a clean database:
+# Reset Databases
 
 ```
 docker compose down -v
@@ -175,7 +274,7 @@ docker compose up –build
 
 ---
 
-# 🔍 Neo4j Graph Visualization
+# 🔍 Neo4j Visualization
 
 Open Neo4j Browser:
 
@@ -184,22 +283,31 @@ http://localhost:7474
 ```
 
 Example query:
+
 ```
 MATCH (n)
 RETURN n
 ```
 
 Example session trace:
+
 ```
-todo
+ToDo right query
 ```
 
 ---
 
-# 📦 Project Structure
+# 📸 Screenshots
+
+## Application Interface
+
+ToDo
+
+---
+
+# 📂 Project Structure
 
 frontend/
-microclient-vue/
 src/
 components/
 Shop.vue
@@ -211,51 +319,25 @@ java/
 shop/
 serve/
 ShopNServe/
-controller/
 handler/
-model/
-repository/
 service/
-
+repository/
+model/
 
 mysql/
 init.sql
 
 ---
 
-# ✨ Features
-
-✔ JWT Authentication  
-✔ Product catalog  
-✔ Shopping cart  
-✔ Order submission  
-✔ Order history  
-✔ Event-driven backend architecture  
-✔ System trace visualization with Neo4j
-
----
-
-# 🔮 Possible Improvements
-
-Future extensions could include:
-
-- product search
-- stock updates after orders
-- admin dashboard
-- order status tracking
-- analytics based on Neo4j graphs
-
----
-
 # 👨‍🎓 Author
 
-This project was developed as part of a **university project** in the field of **data-driven system architectures**.
+This project was developed as part of a **university project in data-driven system architectures**.
 
-The goal of the project was to design and implement a small application demonstrating:
+The goal was to design and implement a system demonstrating:
 
-- a **Blackboard Architecture**
-- **event-driven communication** between frontend and backend components
-- **graph-based request tracing** using Neo4j
-- integration of **multiple data stores** (MySQL for transactional data and Neo4j for system interaction graphs)
+- **Blackboard Architecture**
+- **event-driven communication**
+- **decoupled system components**
+- **graph-based tracing of system interactions**
 
-The project focuses on understanding **system architecture patterns**, **event-based processing**, and **traceability of system interactions** in modern distributed applications.
+The focus lies on understanding **architectural patterns and system interaction modelling** in modern software systems.
