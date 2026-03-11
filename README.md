@@ -59,6 +59,47 @@ ToDo Bild
 
 ---
 
+# ⚙️ Tech Stack
+
+## Frontend
+
+- **Vue 3**
+- **Vuetify**
+- **TypeScript**
+
+Features:
+
+- responsive product grid
+- shopping cart
+- quantity editing
+- order submission
+- order history
+- JWT authentication
+
+---
+
+## Backend
+
+- **Spring Boot**
+- **Maven**
+- **REST API**
+
+Key components:
+
+### BlackboardService
+
+Central orchestration layer handling all frontend events.
+
+### CapabilityHandlers
+
+| Capability | Description |
+|--------|-------------|
+| Authentication | Login and registration |
+| ProductList | Fetch available products |
+| OrderPlaced | Store new orders |
+| OrderHistory | Retrieve past orders |
+
+---
 # 🔄 System Interaction Flow
 
 Every user interaction follows the same conceptual flow:
