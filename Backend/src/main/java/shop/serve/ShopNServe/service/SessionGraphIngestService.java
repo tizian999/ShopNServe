@@ -19,6 +19,20 @@ public class SessionGraphIngestService {
     public SessionGraphIngestService(Neo4jClient neo4j) {
         this.neo4j = neo4j;
     }
+
+    private boolean swapRequestedAndProvided(Capability capability) {
+        return capability == Capability.Authentication
+                || capability == Capability.OrderPlaced;
+    }
+
+    private String requestNodeLabel(Capability capability) {
+        return swapRequestedAndProvided(capability) ? "ProvidedData" : "RequestedData";
+    }
+
+    private String responseNodeLabel(Capability capability) {
+        return swapRequestedAndProvided(capability) ? "RequestedData" : "ProvidedData";
+    }
+
     public String ensureSession(String traceIdOrNull) {
         String sid = (traceIdOrNull == null || traceIdOrNull.isBlank())
                 ? UUID.randomUUID().toString()
@@ -47,7 +61,8 @@ public class SessionGraphIngestService {
                 ui = event.sender().component().replace(".vue", "");
                 if (ui.isBlank()) ui = "unknown";
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
 
         String now = Instant.now().toString();
 
@@ -83,12 +98,14 @@ public class SessionGraphIngestService {
             payload = String.valueOf(requestPayload);
         }
 
+        String requestLabel = requestNodeLabel(capability);
+
         neo4j.query("""
             MATCH (s:Session {id:$sid})-[:TRIGGERED_BY]->(ui:UIComponent {name:$ui})
             MERGE (b:BackendComponent {name:$backend})
             MERGE (c:Capability {name:$cap})
 
-            CREATE (r:RequestedData {
+            CREATE (r:%s {
               id:$rid,
               payload:$payload,
               requestedAt: datetime($now)
@@ -97,7 +114,7 @@ public class SessionGraphIngestService {
             MERGE (ui)-[:REQUESTS]->(r)
             MERGE (r)-[:HANDLED_BY]->(b)
             MERGE (b)-[:TRIGGERS_EVENT]->(c)
-        """).bindAll(Map.of(
+        """.formatted(requestLabel)).bindAll(Map.of(
                 "sid", sessionId,
                 "ui", uiComponent,
                 "backend", backendComponent,
@@ -124,17 +141,19 @@ public class SessionGraphIngestService {
             payload = String.valueOf(responsePayload);
         }
 
+        String responseLabel = responseNodeLabel(capability);
+
         neo4j.query("""
             MATCH (c:Capability {name:$cap})
 
-            CREATE (p:ProvidedData {
+            CREATE (p:%s {
               id:$pid,
               payload:$payload,
               providedAt: datetime($now)
             })
 
             MERGE (c)-[:PROVIDES]->(p)
-        """).bindAll(Map.of(
+        """.formatted(responseLabel)).bindAll(Map.of(
                 "cap", capability.name(),
                 "pid", provId,
                 "payload", payload,
@@ -146,16 +165,18 @@ public class SessionGraphIngestService {
 
     public void markRequestedCompleted(String requestedId) {
         neo4j.query("""
-            MATCH (r:RequestedData {id:$id})
-            SET r.completedAt = datetime()
+            MATCH (n {id:$id})
+            WHERE n:RequestedData OR n:ProvidedData
+            SET n.completedAt = datetime()
         """).bindAll(Map.of("id", requestedId)).run();
     }
 
     public void markRequestedFailed(String requestedId, String error) {
         neo4j.query("""
-            MATCH (r:RequestedData {id:$id})
-            SET r.failedAt = datetime(),
-                r.error = $err
+            MATCH (n {id:$id})
+            WHERE n:RequestedData OR n:ProvidedData
+            SET n.failedAt = datetime(),
+                n.error = $err
         """).bindAll(Map.of(
                 "id", requestedId,
                 "err", error == null ? "" : error
@@ -164,16 +185,18 @@ public class SessionGraphIngestService {
 
     public void markProvidedCompleted(String providedId) {
         neo4j.query("""
-            MATCH (p:ProvidedData {id:$id})
-            SET p.completedAt = datetime()
+            MATCH (n {id:$id})
+            WHERE n:RequestedData OR n:ProvidedData
+            SET n.completedAt = datetime()
         """).bindAll(Map.of("id", providedId)).run();
     }
 
     public void markProvidedFailed(String providedId, String error) {
         neo4j.query("""
-            MATCH (p:ProvidedData {id:$id})
-            SET p.failedAt = datetime(),
-                p.error = $err
+            MATCH (n {id:$id})
+            WHERE n:RequestedData OR n:ProvidedData
+            SET n.failedAt = datetime(),
+                n.error = $err
         """).bindAll(Map.of(
                 "id", providedId,
                 "err", error == null ? "" : error
