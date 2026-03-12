@@ -27,6 +27,7 @@ The project focuses on:
 - Architectural Patterns Used
 - Architecture Overview
 - System Interaction Flow
+- Capability Requests and Responses
 - Tech Stack
 - Frontend
 - Backend
@@ -298,6 +299,126 @@ Every user interaction follows the same conceptual flow:
 5. The appropriate **CapabilityHandler** processes the request  
 6. The response is returned to the frontend  
 7. The interaction is recorded in **Neo4j**
+
+---
+
+# 📡 Capability Requests and Responses
+
+Each frontend interaction is sent to the backend as a **capability-based event**.
+
+The request contains **RequestedData**, which describes what the frontend asks the system to do.  
+The backend processes the request and returns **ProvidedData**, which contains the result.
+
+Both the request and response data are also stored in the **Neo4j interaction graph** to enable tracing and analysis of system behavior.
+
+---
+
+## Capability Overview
+
+| Capability | Handler | RequestedData | ProvidedData |
+|-------------|-------------|-------------|-------------|
+| `Authentication` | `AuthenticationHandler` | username, password | authorization result, JWT token |
+| `ProductList` | `ProductListHandler` | action: listProducts | list of available products |
+| `OrderPlaced` | `OrderPlacedHandler` | username, ordered items | order confirmation, orderId |
+| `OrderHistory` | `OrderHistoryHandler` | username | list of previous orders |
+
+---
+
+## Authentication
+
+### RequestedData
+
+```json
+{
+  "username": "demo",
+  "password": "demo"
+}
+```
+
+### ProvidedData
+
+```json
+{
+  "authorized": true,
+  "token": "jwt-token"
+}
+```
+
+## ProductList
+
+### RequestedData
+
+```json
+{
+  "action": "listProducts"
+}
+```
+
+### ProvidedData
+
+```json
+{
+  "orders": [
+    {
+      "orderId": 42,
+      "totalCents": 180,
+      "items": [
+        {
+          "name": "Eistee Pfirsich 0.5l",
+          "priceCents": 180
+        }
+      ]
+    }
+  ]
+}
+```
+
+## OrderPlaced
+
+### RequestedData
+
+```json
+{
+  "username": "demo",
+  "items": [
+    {
+      "productId": 1,
+      "quantity": 2
+    }
+  ]
+}
+```
+
+### ProvidedData
+
+```json
+{
+  "success": true,
+  "orderId": 42
+}
+```
+
+## OrderHistory
+
+### RequestedData
+
+```json
+{
+  "username": "demo"
+}
+```
+
+```json
+{
+  "orders": [
+    {
+      "orderId": 42,
+      "totalCents": 180,
+      "items": [ "name": "Eistee Pfirsich 0.5l", "priceCents": 180 ]
+    }
+  ]
+}
+```
 
 ---
 
@@ -756,10 +877,10 @@ Services started:
 
 | Service | Port |
 |------|------|
-|`Frontend` | 5176 |
-|`Backend` | 8080 |
-|`MySQL` | 3306 |
-|`Neo4j` | 7474 |
+| `Frontend` | 5176 |
+| `Backend` | 8080 |
+| `MySQL` | 3306 |
+| `Neo4j` | 7474 |
 
 ---
 
@@ -860,15 +981,15 @@ ORDER BY s.startedAt DESC
 
 ## Application Interface
 
-LoginView
+#### LoginView
 ![LoginView](Documentation/Screenshots/LoginView.png)
 
-ProductListView
+### ProductListView
 ![ProductListView](Documentation/Screenshots/ProductlistView.png)
 
 ## Neo4j Interaction Graph
 
-Neo4J Graph
+### Neo4J Graph
 ![Neo4j Interaction Graph](Documentation/Screenshots/Graph.png)
 
 ---
