@@ -4,17 +4,17 @@ import org.springframework.stereotype.Component;
 import shop.serve.ShopNServe.model.BlackboardResponse;
 import shop.serve.ShopNServe.model.Capability;
 import shop.serve.ShopNServe.model.MessageEventRequest;
-import shop.serve.ShopNServe.repository.OrderRepository;
+import shop.serve.ShopNServe.service.OrderListService;
 
 import java.util.Map;
 
 @Component
 public class OrderHistoryHandler implements CapabilityHandler {
 
-    private final OrderRepository orderRepository;
+    private final OrderListService orderListService;
 
-    public OrderHistoryHandler(OrderRepository orderRepository) {
-        this.orderRepository = orderRepository;
+    public OrderHistoryHandler(OrderListService orderListService) {
+        this.orderListService = orderListService;
     }
 
     @Override
@@ -25,18 +25,9 @@ public class OrderHistoryHandler implements CapabilityHandler {
     @Override
     public BlackboardResponse handle(MessageEventRequest event) {
 
-        var orders = orderRepository.findAll();
-
-        var mapped = orders.stream().map(o -> Map.of(
-                "id", o.getId(),
-                "total_cents", o.getTotalCents(),
-                "items", o.getItemsJson(),
-                "created_at", o.getCreatedAt()
-        )).toList();
-
         return new BlackboardResponse(true, Map.of(
-                "action", "ListOrderHistory",
-                "orders", mapped
+                "action", "OrderHistory",
+                "orders", orderListService.listOrders()
         ));
     }
 }

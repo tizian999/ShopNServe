@@ -42,7 +42,10 @@ public class SessionGraphIngestService {
         neo4j.query("""
             MERGE (s:Session {id:$sid})
             ON CREATE SET s.startedAt = datetime($now)
-        """).bindAll(Map.of("sid", sid, "now", now)).run();
+        """).bindAll(Map.of(
+                "sid", sid,
+                "now", now
+        )).run();
 
         return sid;
     }
@@ -70,7 +73,7 @@ public class SessionGraphIngestService {
             MERGE (s:Session {id:$sid})
             ON CREATE SET s.startedAt = datetime($now)
 
-            MERGE (ui:UIComponent {name:$ui})
+            MERGE (ui:UIComponent {sessionId:$sid, name:$ui})
             MERGE (s)-[:TRIGGERED_BY]->(ui)
         """).bindAll(Map.of(
                 "sid", sessionId,
@@ -101,12 +104,13 @@ public class SessionGraphIngestService {
         String requestLabel = requestNodeLabel(capability);
 
         neo4j.query("""
-            MATCH (s:Session {id:$sid})-[:TRIGGERED_BY]->(ui:UIComponent {name:$ui})
-            MERGE (b:BackendComponent {name:$backend})
-            MERGE (c:Capability {name:$cap})
+            MATCH (s:Session {id:$sid})-[:TRIGGERED_BY]->(ui:UIComponent {sessionId:$sid, name:$ui})
+            MERGE (b:BackendComponent {sessionId:$sid, name:$backend})
+            MERGE (c:Capability {sessionId:$sid, name:$cap})
 
             CREATE (r:%s {
               id:$rid,
+              sessionId:$sid,
               payload:$payload,
               requestedAt: datetime($now)
             })
@@ -128,6 +132,7 @@ public class SessionGraphIngestService {
     }
 
     public String createProvidedData(
+            String sessionId,
             Capability capability,
             Object responsePayload
     ) {
@@ -144,16 +149,18 @@ public class SessionGraphIngestService {
         String responseLabel = responseNodeLabel(capability);
 
         neo4j.query("""
-            MATCH (c:Capability {name:$cap})
+            MATCH (c:Capability {sessionId:$sid, name:$cap})
 
             CREATE (p:%s {
               id:$pid,
+              sessionId:$sid,
               payload:$payload,
               providedAt: datetime($now)
             })
 
             MERGE (c)-[:PROVIDES]->(p)
         """.formatted(responseLabel)).bindAll(Map.of(
+                "sid", sessionId,
                 "cap", capability.name(),
                 "pid", provId,
                 "payload", payload,

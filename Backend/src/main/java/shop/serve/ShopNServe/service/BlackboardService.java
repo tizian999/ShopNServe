@@ -101,7 +101,7 @@ public class BlackboardService {
                 return handlerResp;
             }
 
-            String providedId = sessionGraph.createProvidedData(cap, handlerResp.data());
+            String providedId = sessionGraph.createProvidedData(sessionId, cap, handlerResp.data());
             sessionGraph.markProvidedCompleted(providedId);
         }
 
@@ -115,7 +115,7 @@ public class BlackboardService {
             case Authentication, Authorization -> "AuthService";
             case ProductList -> "ProductService";
             case OrderPlaced -> "OrderService";
-            case OrderHistory -> "OrderService";
+            case OrderHistory -> "OrderListService";
             default -> cap.name() + "Service";
         };
     }
