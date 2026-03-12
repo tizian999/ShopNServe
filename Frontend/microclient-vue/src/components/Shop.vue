@@ -259,7 +259,7 @@
 <script lang="ts" setup>
 import { computed, reactive, ref } from "vue";
 
-type Cap = "Authentication" | "ProductList" | "OrderPlaced" | "Authorization";
+type Cap = "Authentication" | "ProductList" | "OrderPlaced" | "OrderHistory";
 type Product = { id: number; name: string; price_cents?: number; stock?: number };
 type CartItem = { product: Product; qty: number };
 
@@ -278,7 +278,6 @@ const orders = ref<any[]>([]);
 const items = computed(() => Object.values(cart));
 const clamp = (n: any) => Math.max(1, Math.trunc(Number(n) || 1));
 const inCart = (id: number) => !!cart[id];
-const remove = (id: number) => delete cart[id];
 const clearCart = () => Object.keys(cart).forEach((k) => delete cart[Number(k)]);
 
 const hasPrice = (p: Product) => Number.isFinite(p.price_cents);
@@ -391,6 +390,7 @@ function logout() {
   clearCart();
   form.username = "";
   form.password = "";
+  orders.value = [];
   clearJwt();
   clearSessionId();
 }

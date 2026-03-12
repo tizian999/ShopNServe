@@ -4,7 +4,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import shop.serve.ShopNServe.model.BlackboardResponse;
 import shop.serve.ShopNServe.model.MessageEventRequest;
-import shop.serve.ShopNServe.service.BlackboardQueryService;
 import shop.serve.ShopNServe.service.BlackboardService;
 
 import java.util.Map;
@@ -14,11 +13,9 @@ import java.util.Map;
 public class BlackboardController {
 
     private final BlackboardService blackboardService;
-    private final BlackboardQueryService queryService;
 
-    public BlackboardController(BlackboardService blackboardService, BlackboardQueryService queryService) {
+    public BlackboardController(BlackboardService blackboardService) {
         this.blackboardService = blackboardService;
-        this.queryService = queryService;
     }
 
     @PostMapping("/messages")
@@ -37,23 +34,5 @@ public class BlackboardController {
                     "traceId", event != null ? event.traceIdOrNull() : null
             )));
         }
-    }
-
-    @GetMapping("/traces")
-    public ResponseEntity<?> getTraces(@RequestParam(defaultValue = "50") int limit) {
-        return ResponseEntity.ok(queryService.getTraces(limit));
-    }
-
-    @GetMapping("/graph")
-    public ResponseEntity<Map<String, Object>> getGraph(@RequestParam(required = false) String traceId) {
-        return ResponseEntity.ok(queryService.getGraph(traceId));
-    }
-
-    @GetMapping("/messages")
-    public ResponseEntity<?> getMessages(
-            @RequestParam(defaultValue = "50") int limit,
-            @RequestParam(required = false) String traceId
-    ) {
-        return ResponseEntity.ok(queryService.getMessages(limit, traceId));
     }
 }
