@@ -860,11 +860,16 @@ ORDER BY s.startedAt DESC
 
 ## Application Interface
 
-![LoginView]()
+LoginView
+![LoginView](Documentation/Screenshots/LoginView.png)
+
+ProductListView
+![ProductListView](Documentation/Screenshots/ProductlistView.png)
 
 ## Neo4j Interaction Graph
 
-![Neo4j Interaction Graph]()
+Neo4J Graph
+![Neo4j Interaction Graph](Documentation/Screenshots/Graph.png)
 
 ---
 
