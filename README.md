@@ -24,6 +24,8 @@ The project focuses on:
 
 - Project Goals
 - Conceptual Architecture
+- Architectural Patterns Used
+- Architecture Overview
 - System Interaction Flow
 - Tech Stack
 - Frontend
@@ -50,49 +52,237 @@ The system combines:
 
 | Layer | Technology |
 |------|-------------|
-Frontend | Vue 3 + Vuetify |
-Backend | Spring Boot |
-Transactional Database | MySQL |
-Interaction Graph | Neo4j |
+| `Frontend` | Vue 3 + Vuetify |
+| `Backend` | Spring Boot |
+| `Transactional Database` | MySQL |
+| `Interaction Graph` | Neo4j |
 
 ---
 
 # 🧠 Conceptual Architecture
 
-The application follows a **Blackboard Architecture** pattern.
+The application follows a **Blackboard architecture**.
 
-Instead of directly calling backend services, the frontend sends **events containing capabilities** to a central component called **BlackboardService**.
+Instead of calling many specialized backend endpoints directly, the frontend sends **capability-based events** to a central orchestration component called **BlackboardService**.
 
-This component decides which backend component should process the request.
+The BlackboardService is responsible for:
+
+- receiving capability-based requests from the frontend
+- validating authentication
+- routing requests to the correct handler
+- delegating business logic to dedicated services
+- recording the interaction flow in Neo4j
+
+This design keeps the frontend **loosely coupled** from backend implementation details and makes the system easier to trace and analyze.
+
+---
+
+# 🧩 Architectural Patterns Used
+
+This project combines several architectural patterns to demonstrate how modern distributed systems can be designed, analyzed, and extended.
+
+The goal is not only to implement a functional application, but to showcase how architectural concepts influence system structure and interaction flow.
+
+---
+
+## Blackboard Architecture
+
+The system is primarily based on the **Blackboard architectural pattern**.
+
+Instead of allowing the frontend to directly call different backend services, all requests are routed through a central orchestration component:
+
+`BlackboardService`
+
+This component acts as a **central coordination hub** that:
+
+- receives capability-based requests from the frontend
+- validates authentication
+- determines which handler should process the request
+- coordinates backend processing
+- records system interactions for traceability
+
+This architecture provides several advantages:
+
+- loose coupling between components
+- centralized orchestration
+- easier extension with new capabilities
+- improved observability of system interactions
+
+---
+
+## Event-Driven Communication
+
+The system implements an **event-driven communication model** to decouple the frontend from backend services.
+
+Instead of exposing many specialized REST endpoints, the frontend sends **events describing the requested capability**.  
+These events are received by the `BlackboardService`, which routes them to the appropriate handler.
+
+Example event:
+
+```json
+{
+  "traceId": "session-id",
+  "sender": {
+    "component": "ProductListView.vue",
+    "application": "Shop-Microclient"
+  },
+  "capabilities": ["ProductList"],
+  "payload": {
+    "action": "listProducts"
+  }
+}
+```
+
+This event-driven communication model provides several benefits:
+	•	reduced coupling between frontend and backend services
+	•	a single unified API entry point
+	•	easier extension of system functionality
+	•	flexible routing of requests based on capabilities
+
+---
+
+## Capability-Based Request Routing
+
+Instead of routing requests via different endpoints, the system routes them based on **capabilities**.
+
+Each capability represents a specific system function that the frontend wants to execute.  
+The frontend sends these capabilities as part of an event to the central `BlackboardService`.
+
+The `BlackboardService` evaluates the requested capability and forwards the request to the appropriate **CapabilityHandler** implementation.
+
+| Capability | Description |
+|-------------|-------------|
+| `Authentication` | user login and registration |
+| `ProductList` | retrieval of product data |
+| `OrderPlaced` | creation of new orders |
+| `OrderHistory` | retrieval of previous orders |
+
+Each capability is processed by a dedicated **CapabilityHandler**.
+
+This routing mechanism provides several advantages:
+
+- clear separation of responsibilities between handlers
+- easy extension of the system by adding new capabilities
+- reduced coupling between frontend and backend components
+- simplified API design with a single entry point
+
+Because all requests are routed through the `BlackboardService`, the system can dynamically determine which backend component should process the request based on the declared capability.
+
+---
+
+## Graph-Based Interaction Tracing
+
+A key architectural feature of this system is the ability to **trace system interactions as a graph**.
+
+All requests and responses are recorded in **Neo4j** using the service:
+
+`SessionGraphIngestService`
+
+Instead of only storing business data, the system also records how components interact during runtime.
+
+The interaction graph captures:
+
+- user sessions
+- UI components triggering requests
+- backend components processing requests
+- executed capabilities
+- request payloads
+- response payloads
+
+This approach enables the system to reconstruct and analyze how requests move through the architecture.
+
+Representing interactions as a graph enables:
+
+- visualization of system workflows
+- tracing of request lifecycles
+- analysis of component dependencies
+- debugging of complex interactions
+
+By storing runtime interactions in Neo4j, the system becomes **transparent and observable**, allowing developers to better understand how components collaborate during execution.
+
+---
+
+## Separation of Concerns
+
+The system architecture follows the principle of **Separation of Concerns**, where different components are responsible for clearly defined tasks.
+
+The application is organized into several architectural layers:
+
+| Layer | Responsibility |
+|------|----------------|
+| `Frontend` | user interface and event generation |
+| `Controller` | REST entry point for frontend requests |
+| `Orchestration` | central coordination of system interactions |
+| `Handlers` | capability-specific request processing |
+| `Services` | business logic implementation |
+| `Repositories` | database access |
+| `Databases` | persistent data storage |
+
+Each layer has a distinct responsibility, which improves:
+
+- maintainability
+- scalability
+- readability of the codebase
+- testability of individual components
+
+This layered design ensures that changes in one part of the system have minimal impact on other parts, making the architecture easier to evolve over time.
 
 ---
 
 # 🏗 Architecture Overview
 
 ```text
-                                           ┌───────────────────────────────┐
-                                           │           Frontend            │
-                                           │         Vue + Vuetify         │
-                                           │            Shop.vue           │
-                                           └───────────────┬───────────────┘
-                                                           │
-                                                           │ POST /api/blackboard/messages
-                                                           ▼
-                                           ┌───────────────────────────────┐
-                                           │        BlackboardService      │
-                                           │  Central request dispatcher   │
-                                           └───────────────┬───────────────┘
-                                                           │
-                                           ┌───────────────┼────────────────┐
-                                           ▼               ▼                ▼ 
-                                      AuthHandler  ProductListHandler  OrderHandlers
-                                           │               │                │
-                                           ▼               ▼                ▼
-                                         MySQL           MySQL            MySQL
-                                                           │
-                                                           ▼
-                                                         Neo4j
-                                                 (interaction tracing)
+            ┌────────────────────────────────────────────────────────────────────┐
+            │                           Frontend Layer                           │
+            │                    Vue 3 + Vuetify + TypeScript                    │
+            │                             Shop.vue                               │
+            └────────────────────────────────┬───────────────────────────────────┘
+                                             │
+                                             │ POST /api/blackboard/messages
+                                             ▼
+            ┌────────────────────────────────────────────────────────────────────┐
+            │                        Controller Layer                            │
+            │                      BlackboardController                          │
+            └────────────────────────────────┬───────────────────────────────────┘
+                                             ▼
+            ┌────────────────────────────────────────────────────────────────────┐
+            │                     Orchestration Layer                            │
+            │                       BlackboardService                            │
+            │        central routing, validation, and coordination               │
+            └────────────────────────────────┬───────────────────────────────────┘
+                                             │
+        ┌────────────────────────┬───────────┼────────────┬────────────────────────┐
+        ▼                        ▼                        ▼                        ▼
+┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│  Authentication  │   │   ProductList    │   │   OrderPlaced    │   │   OrderHistory   │
+│     Handler      │   │     Handler      │   │     Handler      │   │     Handler      │
+└────────┬─────────┘   └────────┬─────────┘   └────────┬─────────┘   └────────┬─────────┘
+         ▼                      ▼                      ▼                      ▼
+┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│   AuthService    │   │  ProductService  │   │   OrderService   │   │ OrderListService │
+└────────┬─────────┘   └────────┬─────────┘   └────────┬─────────┘   └────────┬─────────┘
+         ▼                      ▼                      ▼                      ▼
+┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│   JwtService     │   │ ProductRepository│   │  OrderRepository │   │  OrderRepository │
+└──────────────────┘   └────────┬─────────┘   └────────┬─────────┘   └────────┬─────────┘
+                                │                      │                      │
+                                └──────────────┬───────┴──────────────┬───────┘
+                                               ▼                      ▼
+                                       ┌────────────────────────────────────┐
+                                       │               MySQL                │
+                                       │     transactional business data    │
+                                       └────────────────────────────────────┘
+
+              ┌────────────────────────────────────────────────────────────────────┐
+              │                     Interaction Tracing Layer                      │
+              │                   SessionGraphIngestService                        │
+              │         stores sessions, capabilities, and data flow               │
+              └────────────────────────────────┬───────────────────────────────────┘
+                                               ▼
+                                   ┌──────────────────────┐
+                                   │        Neo4j         │
+                                   │ interaction graph DB │
+                                   └──────────────────────┘          
 ```
 
 ---
@@ -114,43 +304,43 @@ Every user interaction follows the same conceptual flow:
 # 🔁 Example Sequence: Loading the ProductList
 
 ```text
-                                                         User
-                                                           │
-                                                           │ Login
-                                                           ▼
-                                                   Frontend (Shop.vue)
-                                                           │
-                                                           │ capability: Authentication
-                                                           ▼
-                                                   BlackboardService
-                                                           │
-                                                           │ validate JWT
-                                                           ▼
-                                                      AuthHandler
-                                                           │
-                                                           ▼
-                                                   User authenticated
-                                              
-                                              -------------------------------------
-                                              
-                                                         User
-                                                           │
-                                                           │ Click "Load Products"
-                                                           ▼
-                                                       Frontend
-                                                           │
-                                                           │ capability: ProductList
-                                                           ▼
-                                                   BlackboardService
-                                                           │
-                                                           ▼
-                                                   ProductListHandler
-                                                           │
-                                                           ▼
-                                                  MySQL (products table)
-                                                           │
-                                                           ▼
-                                              Products returned to frontend
+           User
+             │
+             │ Login
+             ▼
+     Frontend (Shop.vue)
+             │
+             │ capability: Authentication
+             ▼
+     BlackboardService
+             │
+             │ validate JWT
+             ▼
+    AuthenticationHandler
+             │
+             ▼
+     User authenticated
+
+-------------------------------------
+
+           User
+             │
+             │ Click "Load Products"
+             ▼
+         Frontend
+             │
+             │ capability: ProductList
+             ▼
+     BlackboardService
+             │
+             ▼
+     ProductListHandler
+             │
+             ▼
+    MySQL (products table)
+             │
+             ▼
+Products returned to frontend
 ```
 
 ---
@@ -167,9 +357,9 @@ It is responsible for handling all user interactions and translating them into *
 
 | Technology | Purpose |
 |-------------|-------------|
-Vue 3 | reactive frontend framework |
-Vuetify | UI component library |
-TypeScript | type-safe frontend development |
+| `Vue 3` | reactive frontend framework |
+| `Vuetify` | UI component library |
+| `TypeScript` | type-safe frontend development |
 
 ---
 
@@ -194,7 +384,7 @@ This ensures that the frontend remains **loosely coupled** from backend services
 
 The application is mainly implemented in the component:
 
-Shop.vue 
+`Shop.vue`
 
 This component manages the entire application interface and orchestrates several logical UI areas.
 
@@ -206,10 +396,10 @@ The interface consists of several functional sections.
 
 | UI Section | Description |
 |------------|-------------|
-Login Panel | user authentication |
-Product Grid | displays available products |
-Order Panel | shows cart items and allows editing quantities |
-Order History | displays previously placed orders |
+| `Login Panel` | user authentication |
+| `Product Grid` | displays available products |
+| `Order Panel` | shows cart items and allows editing quantities |
+| `Order History` | displays previously placed orders |
 
 ---
 
@@ -226,7 +416,7 @@ Features:
 
 Products are loaded by sending the capability:
 
-ProductList
+`ProductList`
 
 to the backend.
 
@@ -245,7 +435,7 @@ Features:
 
 Submitting an order triggers the capability:
 
-OrderPlaced
+`OrderPlaced`
 
 ---
 
@@ -262,7 +452,7 @@ Features:
 
 Order history is loaded via the capability:
 
-OrderHistory
+`OrderHistory`
 
 ---
 
@@ -290,28 +480,24 @@ Workflow:
 
 The frontend communicates with the backend via a single API endpoint:
 
-```
+```text
 POST /api/blackboard/messages
 ```
 
 Each request contains:
 
-```
-{
-  traceId,
-  sender,
-  capabilities,
-  payload
-}
-```
+- `traceId`
+- `sender`
+- `capabilities`
+- `payload`
 
 Example event:
 
-```
+```json
 {
-  “capabilities”: [“ProductList”],
-  “payload”: {
-    “action”: “listProducts”
+  "capabilities": ["ProductList"],
+  "payload": {
+    "action": "listProducts"
   }
 }
 ```
@@ -328,9 +514,9 @@ The backend is implemented using **Spring Boot** and follows a **Blackboard Arch
 
 | Technology | Purpose |
 |-------------|-------------|
-Spring Boot | backend framework |
-Maven | dependency management |
-REST API | communication layer |
+| `Spring Boot` | backend framework |
+| `Maven` | dependency management |
+| `REST API` | communication layer |
 
 ---
 
@@ -354,14 +540,14 @@ Handlers implement the actual business logic.
 
 | Handler | Capability | Description |
 |--------|-------------|-------------|
-AuthHandler | Authentication | login & registration |
-ProductListHandler | ProductList | fetch products |
-OrderPlacedHandler | OrderPlaced | store new orders |
-OrderHistoryHandler | OrderHistory | retrieve orders |
+| `AuthenticationHandler` | Authentication | login & registration |
+| `ProductListHandler` | ProductList | fetch products |
+| `OrderPlacedHandler` | OrderPlaced | store new orders |
+| `OrderHistoryHandler` | OrderHistory | retrieve orders |
 
 Handlers implement a shared interface:
 
-```
+```code
 public interface CapabilityHandler {
 
   Capability capability();
@@ -375,14 +561,24 @@ public interface CapabilityHandler {
 
 ### OrderService
 
-Handles order-related operations.
+Handles order creation.
 
 Responsibilities:
 
 - calculate order totals
 - convert cart items to JSON
 - store orders in MySQL
-- retrieve order history
+
+---
+
+### OrderListService
+
+Handles order retrieval.
+
+Responsibilities:
+
+- load stored orders from MySQL
+- prepare order history responses for the frontend
 
 ---
 
@@ -404,34 +600,45 @@ Tracks:
 
 The system consists of several loosely coupled components.
 
-```
-                                                   Frontend (Shop.vue)
-                                                           │
-                                                           ▼
-                                                    BlackboardService
-                                                           │
-                                           ┌───────────────┼────────────────┐
-                                           │               │                │
-                                       AuthService   ProductService   OrderService
-                                              │            │              │
-                                              ▼            ▼              ▼
-                                            MySQL        MySQL           MySQL
-                                                           │
-                                                           ▼
-                                                         Neo4j
-                                               (SessionGraphIngestService)
+```text
+Shop.vue
+   │
+   ▼
+BlackboardController
+   │
+   ▼
+BlackboardService
+   │
+   ├── AuthenticationHandler ──► AuthService ──► JwtService
+   │
+   ├── ProductListHandler ─────► ProductService ─────► ProductRepository
+   │
+   ├── OrderPlacedHandler ─────► OrderService ───────► OrderRepository
+   │
+   └── OrderHistoryHandler ────► OrderListService ───► OrderRepository
+
+BlackboardService ─────────────► SessionGraphIngestService ─────► Neo4j
  ```
 
 ### Component Roles
 
 | Component | Responsibility |
 |-----------|---------------|
-Frontend | UI interactions and event generation |
-BlackboardService | central request orchestration |
-CapabilityHandlers | business logic execution |
-OrderService | order processing |
-AuthService | authentication and JWT validation |
-SessionGraphIngestService | interaction graph storage |
+| `Shop.vue` | user interface and event creation |
+| `BlackboardController` | REST entry point for frontend events |
+| `BlackboardService` | central orchestration and routing |
+| `AuthenticationHandler` | handles authentication requests |
+| `ProductListHandler` | handles product list requests |
+| `OrderPlacedHandler` | handles order creation requests |
+| `OrderHistoryHandler` | handles order history requests |
+| `AuthService` | authentication and login/register logic |
+| `JwtService` | JWT token generation and validation |
+| `ProductService` | retrieval of product data |
+| `OrderService` | creation of new orders |
+| `OrderListService` | retrieval of stored orders |
+| `SessionGraphIngestService` | graph-based interaction tracing |
+| `ProductRepository` | database access for products |
+| `OrderRepository` | database access for orders |
 
 ---
 
@@ -449,12 +656,12 @@ Stores actual business data.
 
 | column | description |
 |------|-------------|
-id | product id |
-name | product name |
-price_cents | price in cents |
-description | product description |
-stock | available stock |
-created_at | creation timestamp |
+| `id` | product id |
+| `name` | product name |
+| `price_cents` | price in cents |
+| `description` | product description |
+| `stock` | available stock |
+| `created_at` | creation timestamp |
 
 ---
 
@@ -462,11 +669,11 @@ created_at | creation timestamp |
 
 | column | description |
 |------|-------------|
-id | order id |
-user_name | username |
-items | JSON list of ordered products |
-total_cents | order total |
-created_at | order timestamp |
+| `id` | order id |
+| `user_name` | username |
+| `items` | JSON list of ordered products |
+| `total_cents` | order total |
+| `created_at` | order timestamp |
 
 Orders store cart items as **JSON** to simplify the schema.
 
@@ -488,37 +695,40 @@ This graph allows analyzing:
 ## Graph Nodes
 
 | Node | Description |
-|-----|-------------|
-Session | user interaction session |
-Trace | request trace |
-UIComponent | frontend component |
-BackendComponent | backend service |
-Capability | executed capability |
-RequestedData | request payload |
-ProvidedData | response payload |
+|------|-------------|
+| `Session` | represents one user session |
+| `UIComponent` | frontend component that triggered the request |
+| `BackendComponent` | backend service/handler involved in processing |
+| `Capability` | executed capability |
+| `RequestedData` | request payload stored in Neo4j |
+| `ProvidedData` | response payload stored in Neo4j |
 
 ---
 
 ## Example Graph Flow
 
 ```text
-                                                     (UIComponent)
-                                                           │
-                                                           │ REQUESTS
-                                                           ▼
-                                                     (RequestedData)
-                                                           │
-                                                           │ HANDLED_BY
-                                                           ▼
-                                                     (BackendComponent)
-                                                           │
-                                                           │ TRIGGERS_EVENT
-                                                           ▼
-                                                     (Capability)
-                                                           │
-                                                           │ PROVIDES
-                                                           ▼
-                                                     (ProvidedData)
+   (Session)
+       │
+       │ TRIGGERED_BY
+       ▼
+   (UIComponent)
+       │
+       │ REQUESTS
+       ▼
+ (RequestedData)
+       │
+       │ HANDLED_BY
+       ▼
+(BackendComponent)
+       │
+       │ TRIGGERS_EVENT
+       ▼
+  (Capability)
+       │
+       │ PROVIDES
+       ▼
+ (ProvidedData)
 ```
 
 ---
@@ -538,18 +748,18 @@ ProvidedData | response payload |
 
 Open the Terminal and navigate to the Project and backend/
 
-```
-docker compose up –-build
+```text
+docker compose up --build
 ```
 
 Services started:
 
 | Service | Port |
 |------|------|
-Frontend | 5176 |
-Backend | 8080 |
-MySQL | 3306 |
-Neo4j | 7474 |
+|`Frontend` | 5176 |
+|`Backend` | 8080 |
+|`MySQL` | 3306 |
+|`Neo4j` | 7474 |
 
 ---
 
@@ -557,10 +767,63 @@ Neo4j | 7474 |
 
 Open the Terminal and navigate to the Project and backend/
 
-```
+```text
 docker compose down -v
-docker compose up –-build
+docker compose up --build
 ```
+
+---
+
+# 📊 Example Interaction Graph
+
+The following diagram illustrates how a single user interaction is recorded inside the **Neo4j interaction graph**.
+
+Example scenario:
+
+1. A user logs in  
+2. The frontend sends an **Authentication capability**  
+3. The request is processed by the backend  
+4. The response is returned to the frontend  
+5. The entire flow is stored in Neo4j
+
+```
+               (Session)
+                   │
+                   │ TRIGGERED_BY
+                   ▼
+        (UIComponent: LoginView)
+                   │
+                   │ REQUESTS
+                   ▼
+            (RequestedData)
+                   │
+                   │ HANDLED_BY
+                   ▼
+(BackendComponent: AuthenticationHandler)
+                   │
+                   │ TRIGGERS_EVENT
+                   ▼
+      (Capability: Authentication)
+                   │
+                   │ PROVIDES
+                   ▼
+            (ProvidedData)
+```
+
+---
+
+## Graph Interpretation
+
+Each node in the graph represents a part of the system interaction.
+
+| Node | Meaning |
+|-----|------|
+|`Session` | unique user interaction session |
+|`UIComponent` | frontend component triggering the request |
+|`RequestedData` | request payload sent by the frontend |
+|`BackendComponent` | backend handler processing the request |
+|`Capability` | executed capability |
+|`ProvidedData` | response payload returned by the backend |
 
 ---
 
@@ -568,25 +831,27 @@ docker compose up –-build
 
 Open Neo4j Browser:
 
-```
+```code
 http://localhost:7474
 ```
 
-Example query:
+Show all stored nodes:
 
-```
+```query
 MATCH (n)
 RETURN n
 ```
 
-Example session trace:
+Show complete interaction flow
 
-```
-MATCH (s:Session)
-OPTIONAL MATCH (s)-[:FIRST_STEP]->(first:Step)
-OPTIONAL MATCH p=(first)-[:NEXT*0..]->(last:Step)
-RETURN s, p
-ORDER BY s.startedAt DESC;
+```query
+MATCH (s:Session)-[:TRIGGERED_BY]->(ui:UIComponent)
+MATCH (ui)-[:REQUESTS]->(r)
+MATCH (r)-[:HANDLED_BY]->(b)
+MATCH (b)-[:TRIGGERS_EVENT]->(c)
+OPTIONAL MATCH (c)-[:PROVIDES]->(p)
+RETURN s, ui, r, b, c, p
+ORDER BY s.startedAt DESC
 ```
 
 ---
@@ -595,7 +860,11 @@ ORDER BY s.startedAt DESC;
 
 ## Application Interface
 
-#ToDo
+![LoginView]()
+
+## Neo4j Interaction Graph
+
+![Neo4j Interaction Graph]()
 
 ---
 
@@ -615,9 +884,9 @@ backend/
           serve/
             ShopNServe/
               handler/
-              service/
-              repository/
               model/
+              repository/
+              service/
 
 mysql/
   init.sql
