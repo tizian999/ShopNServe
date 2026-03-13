@@ -16,7 +16,7 @@ The project focuses on:
 - **Blackboard Architecture**
 - **event-driven communication**
 - **traceability of system interactions**
-- integration of **multiple data stores**
+- **integration of multiple data stores**
 
 ---
 
@@ -135,10 +135,10 @@ Example event:
 ```
 
 This event-driven communication model provides several benefits:
-	•	reduced coupling between frontend and backend services
-	•	a single unified API entry point
-	•	easier extension of system functionality
-	•	flexible routing of requests based on capabilities
+- reduced coupling between frontend and backend services
+- a single unified API entry point
+- easier extension of system functionality
+- flexible routing of requests based on capabilities
 
 ---
 
@@ -1020,7 +1020,7 @@ mysql/
 
 ---
 
-# 👨‍🎓 Author
+# 👨‍🎓 Background
 
 This project was developed as part of a **university project in data-driven system architectures**.
 
