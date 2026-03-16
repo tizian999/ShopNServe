@@ -480,7 +480,7 @@ It is responsible for handling all user interactions and translating them into *
 |-------------|-------------|
 | `Vue 3` | reactive frontend framework |
 | `Vuetify` | UI component library |
-| `TypeScript` | type-safe frontend development |
+| `JavaScript` | frontend development |
 
 ---
 
